@@ -1,0 +1,33 @@
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.dev
+    container_name: ai-novel-backend-dev
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./backend:/app
+      - ./data:/app/data
+      - cargo-cache:/usr/local/cargo/registry
+    environment:
+      - DATA_DIR=/app/data
+      - RUST_LOG=debug
+    command: cargo watch -x run
+
+  frontend:
+    image: node:22-alpine
+    container_name: ai-novel-frontend-dev
+    working_dir: /app
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./frontend:/app
+      - node-modules:/app/node_modules
+    command: sh -c "npm install && npm run dev -- --host 0.0.0.0"
+    depends_on:
+      - backend
+
+volumes:
+  cargo-cache:
+  node-modules:

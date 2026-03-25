@@ -1,0 +1,123 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Custom scrollbar styling for Apple-like appearance */
+@layer base {
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: theme('colors.tertiary') transparent;
+  }
+
+  *::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  *::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  *::-webkit-scrollbar-thumb {
+    background-color: theme('colors.tertiary');
+    border-radius: 3px;
+  }
+
+  *::-webkit-scrollbar-thumb:hover {
+    background-color: theme('colors.secondary');
+  }
+
+  /* Focus ring styles */
+  .focus-ring {
+    @apply ring-2 ring-accent ring-offset-2 outline-none;
+  }
+}
+
+/* Component layer for common patterns */
+@layer components {
+  .nav-item {
+    @apply p-3 rounded-lg transition-colors duration-150 cursor-pointer hover:bg-subtle;
+  }
+
+  .nav-item-active {
+    @apply bg-white shadow-xs font-semibold text-accent;
+  }
+
+  .dark .nav-item {
+    @apply text-dark-primary hover:bg-dark-subtle;
+  }
+
+  .dark .nav-item-active {
+    @apply bg-dark-card text-dark-accent;
+  }
+
+  .card {
+    @apply bg-white rounded-lg shadow-xs;
+  }
+
+  .card-hover {
+    @apply transition-all duration-200 hover:shadow-sm hover:-translate-y-0.5;
+  }
+
+  .button-primary {
+    @apply bg-accent hover:bg-accent-hover text-white font-medium px-4 py-2 rounded-lg transition-colors duration-150 cursor-pointer focus-ring;
+  }
+
+  .button-secondary {
+    @apply bg-subtle hover:bg-border text-primary font-medium px-4 py-2 rounded-lg transition-colors duration-150 cursor-pointer focus-ring;
+  }
+}
+
+/* Prevent flash of unstyled content */
+body {
+  @apply bg-page font-sans antialiased text-primary;
+}
+
+/* Dark mode overrides */
+.dark {
+  color-scheme: dark;
+}
+
+.dark body {
+  @apply bg-dark-page text-dark-primary;
+}
+
+/* Global dark-mode utility remapping for legacy light-only class usage */
+.dark .bg-white {
+  @apply bg-dark-card;
+}
+
+.dark .bg-subtle {
+  @apply bg-dark-subtle;
+}
+
+.dark .bg-page {
+  @apply bg-dark-page;
+}
+
+.dark .text-primary {
+  @apply text-dark-primary;
+}
+
+.dark .text-secondary,
+.dark .text-tertiary {
+  @apply text-dark-secondary;
+}
+
+.dark .border-border,
+.dark .border-subtle {
+  @apply border-dark-border;
+}
+
+.dark .button-secondary {
+  @apply bg-dark-subtle text-dark-primary hover:bg-dark-border;
+}
+
+/* Reduced motion support */
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
