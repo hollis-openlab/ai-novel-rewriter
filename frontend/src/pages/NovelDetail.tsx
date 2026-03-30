@@ -782,6 +782,30 @@ interface SplitPreviewRuleOption {
   priority: number
 }
 
+function resolveSavedCustomRuleId(
+  nextRules: SplitRuleSpec[],
+  currentRule: SplitRuleSpec,
+  payload: Pick<SplitRuleSpec, 'name' | 'pattern' | 'priority' | 'enabled'>
+): string | null {
+  if (currentRule.id) return currentRule.id
+  const exact = nextRules.find((rule) =>
+    rule.name === payload.name &&
+    rule.pattern === payload.pattern &&
+    rule.priority === payload.priority &&
+    rule.enabled === payload.enabled
+  )
+  if (exact?.id) return exact.id
+  const fallback = nextRules.find((rule) => rule.name === payload.name && rule.pattern === payload.pattern)
+  return fallback?.id ?? null
+}
+
+function describeSplitPreviewFailure(reason: string | null | undefined, matchedCount: number): string {
+  if (!reason) return ''
+  if (reason === 'NO_MATCH') return '当前规则在正文中未命中任何章节标题。'
+  if (reason === 'MATCH_COUNT_TOO_LOW') return `当前规则仅命中 ${matchedCount} 处标题，无法稳定切分。`
+  return reason
+}
+
 function buildPreviewRuleOptions(builtinRules: SplitRuleSpec[], customRules: SplitRuleSpec[]): SplitPreviewRuleOption[] {
   return [...builtinRules, ...sortRulesByPriority(customRules)]
     .filter((rule): rule is SplitRuleSpec & { id: string } => typeof rule.id === 'string' && rule.id.length > 0)
@@ -819,10 +843,14 @@ function SplitRulesPanel({ novelId }: { novelId: string }) {
   const [panelCollapsed, setPanelCollapsed] = useState(false)
 
   useEffect(() => {
+    setPreview(null)
+    setMessage(null)
+  }, [novelId])
+
+  useEffect(() => {
     if (!config) return
     setBuiltinRules(config.builtin_rules.map((rule) => ({ ...rule })))
     setCustomRules(sortRulesByPriority(config.custom_rules.map((rule) => ({ ...rule }))))
-    setMessage(null)
   }, [config])
 
   const draft = useMemo(() => ({
@@ -951,7 +979,7 @@ function SplitRulesPanel({ novelId }: { novelId: string }) {
       return
     }
 
-    setRuleBusyId(current.id ?? `new-${index}`)
+    setRuleBusyId(current.id ?? 'new')
     try {
       const payload = {
         name: current.name.trim(),
@@ -964,7 +992,10 @@ function SplitRulesPanel({ novelId }: { novelId: string }) {
         : await splitRulesApi.createCustom(payload)
       queryClient.setQueryData(['split-rules'], next)
       setBuiltinRules(next.builtin_rules.map((item) => ({ ...item })))
-      setCustomRules(sortRulesByPriority(next.custom_rules.map((item) => ({ ...item }))))
+      const nextCustomRules = sortRulesByPriority(next.custom_rules.map((item) => ({ ...item })))
+      setCustomRules(nextCustomRules)
+      const savedRuleId = resolveSavedCustomRuleId(nextCustomRules, current, payload)
+      if (savedRuleId) setSelectedPreviewRuleId(savedRuleId)
       setMessage(current.id ? '自定义规则已更新。' : '自定义规则已创建。')
     } catch (error) {
       setMessage(error instanceof Error ? error.message : '保存自定义规则失败')
@@ -1156,7 +1187,8 @@ function SplitRulesPanel({ novelId }: { novelId: string }) {
                 )}
 
                 {sortRulesByPriority(customRules).map((rule, sortedIndex) => {
-                  const busy = ruleBusyId !== null
+                  const busyId = rule.id ?? 'new'
+                  const busy = ruleBusyId === busyId
                   return (
                     <div key={rule.id ?? `draft-${sortedIndex}`} className="rounded-2xl border border-border bg-subtle p-4">
                       <div className="flex items-start justify-between gap-3">
@@ -1230,7 +1262,7 @@ function SplitRulesPanel({ novelId }: { novelId: string }) {
                         <button
                           type="button"
                           onClick={() => handleSaveCustom(rule)}
-                          disabled={busy}
+                          disabled={ruleBusyId !== null}
                           className="button-primary flex items-center gap-2 disabled:cursor-not-allowed disabled:opacity-50"
                         >
                           {busy ? <Loader2 className="h-4 w-4 animate-spin" style={SAVE_SPINNER_STYLE} /> : <Save className="h-4 w-4" />}
@@ -1239,7 +1271,7 @@ function SplitRulesPanel({ novelId }: { novelId: string }) {
                         <button
                           type="button"
                           onClick={() => handleDeleteCustom(rule)}
-                          disabled={busy}
+                          disabled={ruleBusyId !== null}
                           className="button-secondary flex items-center gap-2 text-error disabled:cursor-not-allowed disabled:opacity-50"
                         >
                           <Trash2 className="h-4 w-4" />
@@ -1265,15 +1297,24 @@ function SplitRulesPanel({ novelId }: { novelId: string }) {
                         }
                         setRuleBusyId('new-rule')
                         try {
-                          const next = await splitRulesApi.createCustom({
+                          const payload = {
                             name: newRule.name.trim(),
                             pattern: newRule.pattern.trim(),
                             priority: Math.max(0, Math.round(newRule.priority)),
                             enabled: newRule.enabled,
+                          }
+                          const next = await splitRulesApi.createCustom({
+                            name: payload.name,
+                            pattern: payload.pattern,
+                            priority: payload.priority,
+                            enabled: payload.enabled,
                           })
                           queryClient.setQueryData(['split-rules'], next)
                           setBuiltinRules(next.builtin_rules.map((item) => ({ ...item })))
-                          setCustomRules(sortRulesByPriority(next.custom_rules.map((item) => ({ ...item }))))
+                          const nextCustomRules = sortRulesByPriority(next.custom_rules.map((item) => ({ ...item })))
+                          setCustomRules(nextCustomRules)
+                          const created = resolveSavedCustomRuleId(nextCustomRules, createBlankSplitRule(), payload)
+                          if (created) setSelectedPreviewRuleId(created)
                           setNewRule(createBlankSplitRule((next.custom_rules.length + 1) * 10))
                           setMessage('新规则已添加。')
                         } catch (error) {
@@ -1325,6 +1366,11 @@ function SplitRulesPanel({ novelId }: { novelId: string }) {
               <p className="text-caption text-secondary">
                 按规则「{ruleName ?? '自动选择'}」预览 · 预计 {preview.estimated_chapters} 章 · 命中 {matchedCount} 处
               </p>
+              {preview.estimated_chapters > matchedCount && (
+                <p className="mt-1 text-caption text-secondary">
+                  说明：正文前存在导语时，会额外生成“前言”章节。
+                </p>
+              )}
               <p className="mt-1 text-caption text-secondary">
                 已展示全部预览章节（{preview.chapters.length} 章），可在下方滚动区域查看。
               </p>
@@ -1377,7 +1423,20 @@ function SplitRulesPanel({ novelId }: { novelId: string }) {
               <AlertTriangle className="mt-0.5 h-4 w-4 text-warning" />
               <div>
                 <p className="text-callout font-medium text-warning">预览异常</p>
-                <p className="text-caption text-secondary">{failureReason}</p>
+                <p className="text-caption text-secondary">{describeSplitPreviewFailure(failureReason, matchedCount)}</p>
+              </div>
+            </div>
+          )}
+
+          {preview.matched_lines.length > 0 && (
+            <div className="mt-4 rounded-xl border border-border bg-white p-3">
+              <p className="text-callout font-medium text-primary">命中样本（最多 {SPLIT_MATCH_SAMPLE_SIZE} 条）</p>
+              <div className="mt-2 max-h-40 space-y-1 overflow-y-auto pr-1">
+                {preview.matched_lines.map((line) => (
+                  <p key={`${line.line_number}-${line.paragraph_index}`} className="font-mono text-caption text-secondary">
+                    第 {line.line_number} 行 · {line.text}
+                  </p>
+                ))}
               </div>
             </div>
           )}
@@ -1689,6 +1748,7 @@ const EMPTY_CHAPTER_ITEMS: ChapterListItem[] = []
 const EMPTY_REWRITE_SEGMENTS: RewriteDisplaySegment[] = []
 const CANONICAL_DIFF_HEADING_RE = /^(?:第[\d零一二三四五六七八九十百千万两〇]+(?:章|节|回|卷|部|篇|集)(?:\s*.+)?|序章|前言|楔子|尾声|后记|番外.*)$/u
 const SENTENCE_CLOSER_RE = /[”"’』」》）\])]/u
+const PARAGRAPH_SPLIT_RE = /(?:\r?\n\s*){2,}/g
 
 function chapterTitle(chapter?: ChapterListItem | null): string {
   if (!chapter) return '未选择章节'
@@ -1737,34 +1797,41 @@ function stageStatusClass(status: StageStatus): string {
   }
 }
 
-function mergeAnalyzeAndMarkStatus(analyze: StageRunInfo, mark: StageRunInfo): StageRunInfo {
-  const statusPriority: StageStatus[] = ['failed', 'running', 'paused', 'completed', 'pending', 'stale']
-  const mergedStatus = statusPriority.find((item) => analyze.status === item || mark.status === item) ?? 'pending'
+export function mergeAnalyzeAndMarkStatus(analyze: StageRunInfo, mark: StageRunInfo): StageRunInfo {
   const chaptersTotal = Math.max(analyze.chapters_total || 0, mark.chapters_total || 0)
-  const progressSource = (
-    analyze.status === mergedStatus
-      ? analyze
-      : mark.status === mergedStatus
-        ? mark
-        : analyze
-  )
-  const chaptersDone = mergedStatus === 'completed'
-    ? Math.max(analyze.chapters_done || 0, mark.chapters_done || 0)
-    : (progressSource.chapters_done ?? analyze.chapters_done ?? mark.chapters_done ?? 0)
+  const completedDone = Math.max(analyze.chapters_done || 0, mark.chapters_done || 0)
+  const warningsCount = Math.max(analyze.warnings_count ?? 0, mark.warnings_count ?? 0)
+  const normalizedMarkStatus: StageStatus = mark.status === 'stale' ? 'paused' : mark.status
+  const normalizedAnalyzeStatus: StageStatus = analyze.status === 'stale' ? 'paused' : analyze.status
 
-  if (analyze.status === 'completed' && mark.status === 'completed') {
-    return {
-      ...analyze,
-      status: 'completed',
-      run_seq: analyze.run_seq,
-      started_at: analyze.started_at ?? mark.started_at,
-      completed_at: mark.completed_at ?? analyze.completed_at,
-      error_message: mark.error_message ?? analyze.error_message,
-      warnings_count: Math.max(analyze.warnings_count ?? 0, mark.warnings_count ?? 0),
-      artifact_path: analyze.artifact_path,
-      chapters_total: chaptersTotal,
-      chapters_done: chaptersDone,
-    }
+  let mergedStatus: StageStatus = 'pending'
+  let chaptersDone = mark.chapters_done ?? analyze.chapters_done ?? 0
+  let errorMessage: string | undefined = mark.error_message ?? analyze.error_message
+
+  if (normalizedMarkStatus === 'completed') {
+    mergedStatus = 'completed'
+    chaptersDone = completedDone
+    errorMessage = undefined
+  } else if (normalizedMarkStatus === 'running' || normalizedMarkStatus === 'paused' || normalizedMarkStatus === 'failed') {
+    mergedStatus = normalizedMarkStatus
+    chaptersDone = mark.chapters_done ?? analyze.chapters_done ?? 0
+    errorMessage = mark.error_message ?? analyze.error_message
+  } else if (normalizedAnalyzeStatus === 'running') {
+    mergedStatus = 'running'
+    chaptersDone = analyze.chapters_done ?? mark.chapters_done ?? 0
+    errorMessage = analyze.error_message ?? mark.error_message
+  } else if (normalizedAnalyzeStatus === 'paused') {
+    mergedStatus = 'paused'
+    chaptersDone = analyze.chapters_done ?? mark.chapters_done ?? 0
+    errorMessage = analyze.error_message ?? mark.error_message
+  } else if (normalizedAnalyzeStatus === 'failed') {
+    mergedStatus = 'failed'
+    chaptersDone = analyze.chapters_done ?? mark.chapters_done ?? 0
+    errorMessage = analyze.error_message ?? mark.error_message
+  } else {
+    mergedStatus = 'pending'
+    chaptersDone = mark.chapters_done ?? analyze.chapters_done ?? 0
+    errorMessage = mark.error_message ?? analyze.error_message
   }
 
   return {
@@ -1773,12 +1840,12 @@ function mergeAnalyzeAndMarkStatus(analyze: StageRunInfo, mark: StageRunInfo): S
     run_seq: analyze.run_seq,
     started_at: analyze.started_at ?? mark.started_at,
     completed_at: mark.completed_at ?? analyze.completed_at,
-    error_message: mark.error_message ?? analyze.error_message,
-    warnings_count: Math.max(analyze.warnings_count ?? 0, mark.warnings_count ?? 0),
+    error_message: errorMessage,
+    warnings_count: warningsCount,
     artifact_path: analyze.artifact_path,
     config_snapshot: analyze.config_snapshot ?? mark.config_snapshot,
     chapters_total: chaptersTotal,
-    chapters_done: chaptersDone,
+    chapters_done: mergedStatus === 'completed' ? completedDone : chaptersDone,
   }
 }
 
@@ -2023,45 +2090,140 @@ function countLineBreaks(text: string): number {
   return (text.match(/\n/g) ?? []).length
 }
 
-function buildChapterPreview(paragraphs: string[], rewrites: Array<{
+function _trimmedSubrange(text: string, start: number, end: number): [number, number] | null {
+  const chunk = text.slice(start, end)
+  if (!chunk) return null
+  const left = chunk.length - chunk.replace(/^\s+/, '').length
+  const right = chunk.replace(/\s+$/, '').length
+  if (right <= left) return null
+  return [start + left, start + right]
+}
+
+function paragraphRangesFromContent(content: string): Array<[number, number]> {
+  const ranges: Array<[number, number]> = []
+  let cursor = 0
+  const regex = new RegExp(PARAGRAPH_SPLIT_RE.source, PARAGRAPH_SPLIT_RE.flags)
+  let match: RegExpExecArray | null = regex.exec(content)
+  while (match) {
+    const normalized = _trimmedSubrange(content, cursor, match.index)
+    if (normalized) ranges.push(normalized)
+    cursor = match.index + match[0].length
+    match = regex.exec(content)
+  }
+  const tail = _trimmedSubrange(content, cursor, content.length)
+  if (tail) ranges.push(tail)
+  return ranges
+}
+
+function resolveSegmentCharRange(
+  segment: {
+    paragraph_range: [number, number]
+    char_offset_range?: [number, number] | null
+    rewrite_windows?: Array<{ start_offset?: number; end_offset?: number }> | null
+  },
+  options: {
+    chapterLength: number
+    paragraphRanges: Array<[number, number]>
+  },
+): [number, number] | null {
+  const { chapterLength, paragraphRanges } = options
+  const windows = Array.isArray(segment.rewrite_windows) ? segment.rewrite_windows : []
+  if (windows.length > 0) {
+    const sorted = [...windows]
+      .map((item) => [Number(item.start_offset), Number(item.end_offset)] as [number, number])
+      .filter(([start, end]) => Number.isFinite(start) && Number.isFinite(end) && start >= 0 && end > start)
+      .sort((a, b) => a[0] - b[0])
+    if (sorted.length > 0) {
+      const start = sorted[0][0]
+      const end = sorted[sorted.length - 1][1]
+      if (end <= chapterLength) return [start, end]
+    }
+  }
+
+  const range = segment.char_offset_range
+  if (range && range.length === 2) {
+    const start = Number(range[0])
+    const end = Number(range[1])
+    if (Number.isFinite(start) && Number.isFinite(end) && start >= 0 && end > start && end <= chapterLength) {
+      return [start, end]
+    }
+  }
+
+  const [startParagraph, endParagraph] = segment.paragraph_range
+  if (
+    startParagraph < 1
+    || endParagraph < startParagraph
+    || endParagraph > paragraphRanges.length
+  ) {
+    return null
+  }
+  const start = paragraphRanges[startParagraph - 1][0]
+  const end = paragraphRanges[endParagraph - 1][1]
+  return end > start ? [start, end] : null
+}
+
+export function buildChapterPreview(chapterContent: string, paragraphs: string[], rewrites: Array<{
   paragraph_range: [number, number]
+  char_offset_range?: [number, number] | null
+  rewrite_windows?: Array<{ start_offset?: number; end_offset?: number }> | null
   status?: string | null
   rewritten_text?: string | null
   manual_edited_text?: string | null
 }>): string {
-  if (paragraphs.length === 0) return ''
-  const sorted = [...rewrites].sort((a, b) => a.paragraph_range[0] - b.paragraph_range[0])
-  const result: string[] = []
-  let cursor = 1
+  if (!chapterContent) return ''
+  const paragraphRanges = paragraphRangesFromContent(chapterContent)
+  const candidates: Array<{ start: number; end: number; rewritten: string }> = []
 
-  sorted.forEach((segment) => {
-    const [start, end] = segment.paragraph_range
-    while (cursor < start && cursor <= paragraphs.length) {
-      result.push(paragraphs[cursor - 1])
-      cursor += 1
-    }
-
+  rewrites.forEach((segment) => {
     const rewritten = rewriteTextForSegment(segment)
-    const originalRangeText = paragraphs.slice(start - 1, end).join('\n\n')
-    const isHeadingOnlySegment = start === end && isHeadingParagraph(paragraphs[start - 1] ?? '')
+    if (!rewritten || segment.status === 'rejected') return
+
+    const [startParagraph, endParagraph] = segment.paragraph_range
+    const originalRangeText = paragraphs.slice(startParagraph - 1, endParagraph).join('\n\n')
+    const isHeadingOnlySegment = startParagraph === endParagraph && isHeadingParagraph(paragraphs[startParagraph - 1] ?? '')
     const rewriteLooksLikeHeadingExpansion = isHeadingOnlySegment
       && Boolean(rewritten)
       && (
         (rewritten?.includes('\n') ?? false)
         || (rewritten?.trim().length ?? 0) > Math.max(24, originalRangeText.trim().length * 4)
       )
-    const canUseRewrite = Boolean(rewritten) && segment.status !== 'rejected' && !rewriteLooksLikeHeadingExpansion
+    if (rewriteLooksLikeHeadingExpansion) return
 
-    result.push(canUseRewrite ? rewritten ?? '' : originalRangeText)
-    cursor = end + 1
+    const charRange = resolveSegmentCharRange(
+      segment,
+      {
+        chapterLength: chapterContent.length,
+        paragraphRanges,
+      }
+    )
+    if (!charRange) return
+
+    candidates.push({
+      start: charRange[0],
+      end: charRange[1],
+      rewritten,
+    })
   })
 
-  while (cursor <= paragraphs.length) {
-    result.push(paragraphs[cursor - 1])
-    cursor += 1
-  }
+  if (candidates.length === 0) return chapterContent
+  candidates.sort((a, b) => (a.start - b.start) || (a.end - b.end))
 
-  return result.filter(Boolean).join('\n\n')
+  const assembledParts: string[] = []
+  let cursor = 0
+  candidates.forEach((candidate) => {
+    if (candidate.start < cursor) {
+      return
+    }
+    if (cursor < candidate.start) {
+      assembledParts.push(chapterContent.slice(cursor, candidate.start))
+    }
+    assembledParts.push(candidate.rewritten)
+    cursor = candidate.end
+  })
+  if (cursor < chapterContent.length) {
+    assembledParts.push(chapterContent.slice(cursor))
+  }
+  return assembledParts.join('')
 }
 
 export function stageStatusForChapter(
@@ -2642,11 +2804,11 @@ export function NovelDetail() {
   }, [rewriteResults])
   const hasAnyRewrittenText = rewriteResults.some((segment) => Boolean(rewriteTextForSegment(segment)))
   const hasRewritePlan = rewriteResults.length > 0
+  const originalText = useMemo(() => chapterDetail?.content ?? '', [chapterDetail?.content])
   const rewriteDraftBaseText = useMemo(
-    () => buildChapterPreview(paragraphs, rewriteResults),
-    [paragraphs, rewriteResults]
+    () => buildChapterPreview(originalText, paragraphs, rewriteResults),
+    [originalText, paragraphs, rewriteResults]
   )
-  const originalText = useMemo(() => paragraphs.join('\n\n'), [paragraphs])
   const selectedChapterKey = selectedChapterIndex ?? -1
   const hasLocalChapterDraft = Object.prototype.hasOwnProperty.call(chapterRewriteDrafts, selectedChapterKey)
   const selectedSavedDraftSnapshot = selectedChapterIndex === null ? undefined : savedChapterRewriteDrafts[selectedChapterIndex]
@@ -2742,6 +2904,8 @@ export function NovelDetail() {
     : []
   const rewriteChapterHasNoMarkedSegments = selectedStage === 'rewrite'
     && selectedChapterPreviousStageCompleted
+    && selectedChapterStageStatus === 'completed'
+    && !rewriteLoading
     && rewriteResults.length === 0
   const selectedChapterStageStatusClass = rewriteChapterHasNoMarkedSegments
     ? 'bg-subtle text-secondary'
@@ -2823,9 +2987,6 @@ export function NovelDetail() {
     if (rewriteProviderSelectionMissing && selectedStage === 'rewrite') {
       return '已配置多个 Provider，请先在改写目标设置中选择本次改写使用的 Provider。'
     }
-    if (selectedStage === 'rewrite' && rewriteChapterHasNoMarkedSegments) {
-      return '当前章节未命中可改写段落，无需执行改写重跑。'
-    }
     if (rewriteTargetSettingInvalid && selectedStage === 'rewrite') {
       return '改写目标设置无效，请输入大于等于 0 的整数，或留空使用默认值。'
     }
@@ -2894,11 +3055,18 @@ export function NovelDetail() {
     if (selectedChapterIndex === null) return
     setChapterActionBusy(`${selectedStage}:${selectedChapterIndex}:${action}`)
     try {
+      const chapterRetryPayload = (() => {
+        const basePayload = selectedStage === 'rewrite' ? (buildRewriteStagePayload() ?? {}) : {}
+        if (action === 'retry') {
+          return { ...basePayload, force_rerun: true }
+        }
+        return Object.keys(basePayload).length > 0 ? basePayload : undefined
+      })()
       const response = await chaptersApi.retryChapter(
         id,
         selectedStage,
         selectedChapterIndex,
-        buildRewriteStagePayload()
+        chapterRetryPayload
       )
       const now = new Date().toLocaleTimeString('zh-CN', { hour12: false })
       if (selectedStage === 'rewrite') {
@@ -3938,6 +4106,11 @@ export function NovelDetail() {
                   )}
                   {showGenericChapterActionDisabledReason && (
                     <p className="mt-2 text-caption text-warning">{chapterActionDisabledReason}</p>
+                  )}
+                  {selectedStage === 'rewrite' && rewriteChapterHasNoMarkedSegments && (
+                    <p className="mt-2 text-caption text-secondary">
+                      本章当前未命中可改写段落，点击后会按 no-op 方式返回并保持原文。
+                    </p>
                   )}
                   {rewriteTargetSettingInvalid && selectedStage === 'rewrite' && (
                     <p className="mt-2 text-caption text-error">改写目标设置无效，当前章节操作已禁用。</p>

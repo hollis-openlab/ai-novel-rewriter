@@ -234,6 +234,8 @@ def _patch_stage_dependencies(monkeypatch: pytest.MonkeyPatch) -> None:
             segment_id=request.segment.segment_id,
             chapter_index=request.chapter.index,
             paragraph_range=request.segment.paragraph_range,
+            char_offset_range=request.segment.char_offset_range,
+            rewrite_windows=list(request.segment.rewrite_windows or []),
             scene_type=request.segment.scene_type,
             target_ratio=request.segment.target_ratio,
             target_chars=request.segment.target_chars,
@@ -388,6 +390,8 @@ def test_retry_rewrite_chapter_uses_selected_provider_override(tmp_path: Path, m
             segment_id=request.segment.segment_id,
             chapter_index=request.chapter.index,
             paragraph_range=request.segment.paragraph_range,
+            char_offset_range=request.segment.char_offset_range,
+            rewrite_windows=list(request.segment.rewrite_windows or []),
             scene_type=request.segment.scene_type,
             target_ratio=request.segment.target_ratio,
             target_chars=request.segment.target_chars,
@@ -467,6 +471,8 @@ def test_retry_rewrite_chapter_applies_window_mode_overrides(tmp_path: Path, mon
             segment_id=request.segment.segment_id,
             chapter_index=request.chapter.index,
             paragraph_range=request.segment.paragraph_range,
+            char_offset_range=request.segment.char_offset_range,
+            rewrite_windows=list(request.segment.rewrite_windows or []),
             scene_type=request.segment.scene_type,
             target_ratio=request.segment.target_ratio,
             target_chars=request.segment.target_chars,
@@ -522,6 +528,88 @@ def test_retry_rewrite_chapter_applies_window_mode_overrides(tmp_path: Path, mon
 
             assert observed_flags
             assert all(flags == (False, False, False) for flags in observed_flags)
+        finally:
+            await engine.dispose()
+
+    asyncio.run(_run())
+
+
+def test_retry_rewrite_chapter_force_rerun_reexecutes_completed_segments(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[tuple[int, str]] = []
+
+    async def _tracked_execute_rewrite_segment(request: RewriteSegmentRequest, **_: object) -> RewriteResult:
+        calls.append((request.chapter.index, request.segment.segment_id))
+        call_seq = len(calls)
+        rewritten_text = f"重写:{request.chapter.index}:{call_seq}"
+        return RewriteResult(
+            segment_id=request.segment.segment_id,
+            chapter_index=request.chapter.index,
+            paragraph_range=request.segment.paragraph_range,
+            char_offset_range=request.segment.char_offset_range,
+            rewrite_windows=list(request.segment.rewrite_windows or []),
+            scene_type=request.segment.scene_type,
+            target_ratio=request.segment.target_ratio,
+            target_chars=request.segment.target_chars,
+            target_chars_min=request.segment.target_chars_min,
+            target_chars_max=request.segment.target_chars_max,
+            anchor_verified=True,
+            strategy=request.segment.strategy,
+            original_text="原文",
+            rewritten_text=rewritten_text,
+            original_chars=2,
+            rewritten_chars=len(rewritten_text),
+            status=RewriteResultStatus.COMPLETED,
+            attempts=1,
+            provider_used=request.provider_type.value,
+            error_code=None,
+            error_detail=None,
+            manual_edited_text=None,
+            rollback_snapshot=None,
+            audit_trail=[],
+        )
+
+    monkeypatch.setattr(stages_routes, "execute_rewrite_segment", _tracked_execute_rewrite_segment)
+
+    async def _run() -> None:
+        engine, sessionmaker = await _prepare_session(tmp_path / "db.sqlite")
+        try:
+            novel_id = "novel-retry-b-force-rerun"
+            task_id = "task-retry-b-force-rerun"
+            await _seed_task_fixture(sessionmaker, novel_id=novel_id, task_id=task_id)
+            app = _build_app(sessionmaker, tmp_path / "artifacts")
+
+            with TestClient(app) as client:
+                analyze_run = client.post(f"/novels/{novel_id}/stages/analyze/run")
+                assert analyze_run.status_code == 200
+                rewrite_run = client.post(f"/novels/{novel_id}/stages/rewrite/run")
+                assert rewrite_run.status_code == 200
+                baseline_calls = len(calls)
+                assert baseline_calls >= 1
+
+                # Default retry keeps "补跑缺失/失败" semantics and skips already completed segments.
+                retry_no_force = client.post(f"/novels/{novel_id}/stages/rewrite/chapters/1/retry")
+                assert retry_no_force.status_code == 200
+                assert len(calls) == baseline_calls
+
+                # Force rerun should execute the completed segment again.
+                retry_force = client.post(
+                    f"/novels/{novel_id}/stages/rewrite/chapters/1/retry",
+                    json={"force_rerun": True},
+                )
+                assert retry_force.status_code == 200
+                retry_force_payload = retry_force.json()
+                assert retry_force_payload["status"] == "completed"
+                assert retry_force_payload["force_rerun"] is True
+                assert len(calls) == baseline_calls + 1
+
+            store = ArtifactStore(tmp_path / "artifacts")
+            chapter_path = store.stage_dir(novel_id, task_id, "rewrite") / "ch_001_rewrites.json"
+            chapter_payload = json.loads(chapter_path.read_text(encoding="utf-8"))
+            rewritten_text = str(chapter_payload["segments"][0]["rewritten_text"])
+            assert rewritten_text == "重写:1:2"
         finally:
             await engine.dispose()
 

@@ -1455,6 +1455,7 @@ async def _retry_rewrite_stage_chapter(
     chapter_idx: int,
     provider_id: str | None = None,
     rewrite_target_added_chars_override: int | None = None,
+    force_rerun: bool = False,
     rewrite_window_mode_enabled: bool | None = None,
     rewrite_window_guardrail_enabled: bool | None = None,
     rewrite_window_audit_enabled: bool | None = None,
@@ -1550,7 +1551,11 @@ async def _retry_rewrite_stage_chapter(
         pending_segments: list[Any] = []
         retained_results: list[RewriteResult] = []
         if chapter_plan is not None and chapter_plan.segments:
-            pending_segments, retained_results = _split_rewrite_segments_for_execution(chapter_plan, existing_results)
+            if force_rerun:
+                pending_segments = list(chapter_plan.segments)
+                retained_results = []
+            else:
+                pending_segments, retained_results = _split_rewrite_segments_for_execution(chapter_plan, existing_results)
             adjusted_segments = _segments_with_added_chars_override(
                 pending_segments,
                 rewrite_target_added_chars_override,
@@ -1662,6 +1667,7 @@ async def _retry_rewrite_stage_chapter(
                 "pending_chapters": pending_chapters,
                 "rewrite_window_metrics": _rewrite_window_metrics_by_chapter(merged_results_by_chapter),
                 "rewrite_target_added_chars_override": rewrite_target_added_chars_override,
+                "force_rerun": force_rerun,
             },
         )
 
@@ -1674,6 +1680,7 @@ async def _retry_rewrite_stage_chapter(
             "segments_total": len(chapter_results),
             "failed_segments": sum(1 for item in chapter_results if item.status == RewriteResultStatus.FAILED),
             "rewrite_target_added_chars_override": rewrite_target_added_chars_override,
+            "force_rerun": force_rerun,
         }
     except AppError as exc:
         latest_rewrite = await _latest_stage_run(db, active_task.id, StageName.REWRITE) or latest_rewrite
@@ -1704,6 +1711,7 @@ async def _retry_rewrite_stage_chapter(
                     "status": "failed",
                 },
                 "rewrite_target_added_chars_override": rewrite_target_added_chars_override,
+                "force_rerun": force_rerun,
                 "error": _app_error_artifact_payload(exc),
             },
         )
@@ -1743,6 +1751,7 @@ async def _retry_rewrite_stage_chapter(
                     "status": "failed",
                 },
                 "rewrite_target_added_chars_override": rewrite_target_added_chars_override,
+                "force_rerun": force_rerun,
                 "error": {
                     "code": app_error.code.value,
                     "message": app_error.message,
@@ -3648,6 +3657,7 @@ async def retry_stage_chapter(
         chapter_idx=chapter_idx,
         provider_id=payload.provider_id if payload is not None else None,
         rewrite_target_added_chars_override=_resolve_rewrite_added_chars_override(payload),
+        force_rerun=bool(payload.force_rerun) if payload is not None else False,
         rewrite_window_mode_enabled=payload.rewrite_window_mode_enabled if payload is not None else None,
         rewrite_window_guardrail_enabled=payload.rewrite_window_guardrail_enabled if payload is not None else None,
         rewrite_window_audit_enabled=payload.rewrite_window_audit_enabled if payload is not None else None,

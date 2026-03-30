@@ -21,6 +21,16 @@ from backend.app.llm.prompting import StagePromptBundle, build_stage_prompts
 from backend.app.llm.validation import AnalyzeValidationResult, validate_analyze_output
 from backend.app.models.core import ChapterAnalysis, ProviderType, SceneRuleHit
 from backend.app.services.config_store import SceneRule
+from backend.app.services.marking import (
+    _build_chapter_sentence_index,
+    _ground_scene_range_from_rule_hits,
+    _normalize_paragraph_range,
+    _normalize_sentence_range_from_source,
+    _segment_sentence_and_offset_ranges,
+    _sentence_char_range,
+    _should_use_sentence_scale_mapping,
+    _window_paragraph_range_from_sentence_range,
+)
 
 ANALYZE_STAGE_NAME = "analyze"
 CHAPTER_ANALYSIS_FILE_TEMPLATE = "ch_{chapter_index:03d}_analysis.json"
@@ -106,6 +116,49 @@ def _extract_hit_evidence(text: str, trigger_condition: str, *, window_chars: in
     return text[start:end].strip()
 
 
+def _coerce_int_pair(value: object) -> tuple[int, int] | None:
+    if not isinstance(value, (list, tuple)) or len(value) != 2:
+        return None
+    try:
+        start = int(value[0])
+        end = int(value[1])
+    except (TypeError, ValueError):
+        return None
+    return start, end
+
+
+def _clamp_sentence_range(
+    sentence_range: tuple[int, int] | None,
+    *,
+    sentence_count: int,
+) -> tuple[int, int] | None:
+    if sentence_range is None or sentence_count <= 0:
+        return None
+    start, end = sentence_range
+    start = max(1, min(sentence_count, int(start)))
+    end = max(start, min(sentence_count, int(end)))
+    return start, end
+
+
+def _sentence_range_from_char_offsets(
+    sentence_spans: Sequence[Any],
+    char_offset_range: tuple[int, int],
+) -> tuple[int, int] | None:
+    start, end = char_offset_range
+    if start < 0 or end <= start:
+        return None
+    hit_sentence_indexes: list[int] = []
+    for span in sentence_spans:
+        if span.end_offset <= start:
+            continue
+        if span.start_offset >= end:
+            break
+        hit_sentence_indexes.append(int(span.sentence_index))
+    if not hit_sentence_indexes:
+        return None
+    return min(hit_sentence_indexes), max(hit_sentence_indexes)
+
+
 def _enrich_scene_rule_hits(
     analysis: ChapterAnalysis,
     *,
@@ -155,6 +208,115 @@ def _enrich_scene_rule_hits(
             existing_pairs.add(pair)
 
         updated_scenes.append(scene.model_copy(update={"rule_hits": merged_hits}))
+
+    return analysis.model_copy(update={"scenes": updated_scenes})
+
+
+def _enrich_scene_spans(
+    analysis: ChapterAnalysis,
+    *,
+    chapter_text: str,
+) -> ChapterAnalysis:
+    if not chapter_text.strip() or not analysis.scenes:
+        return analysis
+
+    chapter_index = _build_chapter_sentence_index(chapter_text)
+    paragraph_count = len(chapter_index.paragraphs)
+    sentence_count = len(chapter_index.sentence_spans)
+    chapter_length = len(chapter_text)
+    if paragraph_count <= 0 or sentence_count <= 0:
+        return analysis
+
+    source_upper_bound = max(
+        (int(getattr(scene, "paragraph_range")[1]) for scene in analysis.scenes),
+        default=paragraph_count,
+    )
+
+    updated_scenes = []
+    for scene in analysis.scenes:
+        raw_paragraph_range = tuple(getattr(scene, "paragraph_range"))
+        normalized_paragraph_range = _normalize_paragraph_range(
+            raw_paragraph_range,
+            paragraph_count=paragraph_count,
+            source_upper_bound=source_upper_bound,
+        )
+        sentence_range, char_offset_range = _segment_sentence_and_offset_ranges(
+            chapter_index,
+            normalized_paragraph_range,
+        )
+
+        grounded_from_hits = _ground_scene_range_from_rule_hits(
+            scene,
+            chapter_text=chapter_text,
+            chapter_sentence_index=chapter_index,
+        )
+        if grounded_from_hits is not None:
+            normalized_paragraph_range, sentence_range, char_offset_range = grounded_from_hits
+
+        explicit_sentence_range = _clamp_sentence_range(
+            _coerce_int_pair(getattr(scene, "sentence_range", None)),
+            sentence_count=sentence_count,
+        )
+        if grounded_from_hits is None:
+            if explicit_sentence_range is not None:
+                resolved_paragraph = _window_paragraph_range_from_sentence_range(
+                    chapter_index.sentence_spans,
+                    explicit_sentence_range,
+                )
+                resolved_char = _sentence_char_range(chapter_index.sentence_spans, explicit_sentence_range)
+                if resolved_paragraph is not None and resolved_char is not None:
+                    normalized_paragraph_range = resolved_paragraph
+                    sentence_range = explicit_sentence_range
+                    char_offset_range = resolved_char
+            else:
+                explicit_char_range = _coerce_int_pair(getattr(scene, "char_offset_range", None))
+                if explicit_char_range is not None:
+                    char_start = max(0, explicit_char_range[0])
+                    char_end = min(chapter_length, explicit_char_range[1])
+                    if char_end > char_start:
+                        clamped_char_range = (char_start, char_end)
+                        sentence_from_char = _sentence_range_from_char_offsets(
+                            chapter_index.sentence_spans,
+                            clamped_char_range,
+                        )
+                        if sentence_from_char is not None:
+                            resolved_paragraph = _window_paragraph_range_from_sentence_range(
+                                chapter_index.sentence_spans,
+                                sentence_from_char,
+                            )
+                            if resolved_paragraph is not None:
+                                normalized_paragraph_range = resolved_paragraph
+                                sentence_range = sentence_from_char
+                                char_offset_range = clamped_char_range
+                elif _should_use_sentence_scale_mapping(
+                    paragraph_count=paragraph_count,
+                    source_upper_bound=source_upper_bound,
+                ):
+                    scaled_sentence_range = _normalize_sentence_range_from_source(
+                        raw_paragraph_range,
+                        sentence_count=sentence_count,
+                        source_upper_bound=source_upper_bound,
+                    )
+                    if scaled_sentence_range is not None:
+                        resolved_paragraph = _window_paragraph_range_from_sentence_range(
+                            chapter_index.sentence_spans,
+                            scaled_sentence_range,
+                        )
+                        resolved_char = _sentence_char_range(chapter_index.sentence_spans, scaled_sentence_range)
+                        if resolved_paragraph is not None and resolved_char is not None:
+                            normalized_paragraph_range = resolved_paragraph
+                            sentence_range = scaled_sentence_range
+                            char_offset_range = resolved_char
+
+        updated_scenes.append(
+            scene.model_copy(
+                update={
+                    "paragraph_range": normalized_paragraph_range,
+                    "sentence_range": sentence_range,
+                    "char_offset_range": char_offset_range,
+                }
+            )
+        )
 
     return analysis.model_copy(update={"scenes": updated_scenes})
 
@@ -324,6 +486,10 @@ async def analyze_chapter(
         chapter_text=request.chapter_text,
         scene_rules=request.scene_rules,
     )
+    analysis = _enrich_scene_spans(
+        analysis,
+        chapter_text=request.chapter_text,
+    )
     if audit_logger is not None:
         audit_logger.record_call(
             novel_id=request.novel_id,
@@ -480,7 +646,12 @@ def update_analysis_artifact(
     chapter_title: str = "",
     source: str = "manual",
     metadata: Mapping[str, Any] | None = None,
+    chapter_text: str = "",
 ) -> Path:
+    normalized_analysis = _enrich_scene_spans(
+        analysis,
+        chapter_text=chapter_text,
+    )
     result = AnalyzeChapterResult(
         request=AnalyzeChapterRequest(
             novel_id=novel_id,
@@ -491,16 +662,16 @@ def update_analysis_artifact(
             chapter_text="",
             model_name="",
         ),
-        analysis=analysis,
+        analysis=normalized_analysis,
         validation=AnalyzeValidationResult(
             passed=True,
-            parsed=analysis,
+            parsed=normalized_analysis,
             details={"source": source, **dict(metadata or {})},
         ),
         completion=CompletionResponse(
             provider_type=ProviderType.OPENAI_COMPATIBLE,
             model_name="",
-            text=json.dumps(analysis.model_dump(mode="json"), ensure_ascii=False),
+            text=json.dumps(normalized_analysis.model_dump(mode="json"), ensure_ascii=False),
             latency_ms=0,
             raw_response={},
         ),

@@ -6,10 +6,16 @@ from pydantic import ValidationError
 from backend.app.models.core import RewriteChapterPlan, RewriteSegment, RewriteStrategy
 
 
-def _segment(segment_id: str, paragraph_range: tuple[int, int]) -> RewriteSegment:
+def _segment(
+    segment_id: str,
+    paragraph_range: tuple[int, int],
+    *,
+    char_offset_range: tuple[int, int] | None = None,
+) -> RewriteSegment:
     return RewriteSegment(
         segment_id=segment_id,
         paragraph_range=paragraph_range,
+        char_offset_range=char_offset_range,
         anchor={
             "paragraph_start_hash": "a",
             "paragraph_end_hash": "b",
@@ -55,6 +61,28 @@ def test_rewrite_chapter_plan_accepts_non_overlapping_ranges() -> None:
         ],
     )
     assert len(plan.segments) == 2
+
+
+def test_rewrite_chapter_plan_accepts_overlapping_paragraph_ranges_with_disjoint_char_windows() -> None:
+    plan = RewriteChapterPlan(
+        chapter_index=1,
+        segments=[
+            _segment("550e8400-e29b-41d4-a716-446655440000", (1, 3), char_offset_range=(0, 90)),
+            _segment("550e8400-e29b-41d4-a716-446655440001", (3, 4), char_offset_range=(90, 180)),
+        ],
+    )
+    assert len(plan.segments) == 2
+
+
+def test_rewrite_chapter_plan_rejects_overlapping_char_windows() -> None:
+    with pytest.raises(ValidationError):
+        RewriteChapterPlan(
+            chapter_index=1,
+            segments=[
+                _segment("550e8400-e29b-41d4-a716-446655440000", (1, 1), char_offset_range=(0, 120)),
+                _segment("550e8400-e29b-41d4-a716-446655440001", (2, 2), char_offset_range=(110, 180)),
+            ],
+        )
 
 
 def test_rewrite_segment_auto_generates_uuid_v4() -> None:

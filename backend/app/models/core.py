@@ -173,8 +173,44 @@ class SceneSegment(BaseModel):
 
     scene_type: str
     paragraph_range: tuple[int, int]
+    sentence_range: tuple[int, int] | None = None
+    char_offset_range: tuple[int, int] | None = None
     rewrite_potential: RewritePotential
     rule_hits: list[SceneRuleHit] = Field(default_factory=list)
+
+    @field_validator("paragraph_range")
+    @classmethod
+    def validate_paragraph_range(cls, value: tuple[int, int]) -> tuple[int, int]:
+        start, end = value
+        if start < 1:
+            raise ValueError("paragraph_range start must be greater than or equal to 1")
+        if end < start:
+            raise ValueError("paragraph_range end must be greater than or equal to start")
+        return value
+
+    @field_validator("sentence_range")
+    @classmethod
+    def validate_sentence_range(cls, value: tuple[int, int] | None) -> tuple[int, int] | None:
+        if value is None:
+            return None
+        start, end = value
+        if start < 1:
+            raise ValueError("sentence_range start must be greater than or equal to 1")
+        if end < start:
+            raise ValueError("sentence_range end must be greater than or equal to start")
+        return value
+
+    @field_validator("char_offset_range")
+    @classmethod
+    def validate_char_offset_range(cls, value: tuple[int, int] | None) -> tuple[int, int] | None:
+        if value is None:
+            return None
+        start, end = value
+        if start < 0:
+            raise ValueError("char_offset_range start must be greater than or equal to 0")
+        if end <= start:
+            raise ValueError("char_offset_range end must be greater than start")
+        return value
 
 
 class ChapterAnalysis(BaseModel):
@@ -360,10 +396,29 @@ class RewriteChapterPlan(BaseModel):
 
     @model_validator(mode="after")
     def validate_non_overlapping_ranges(self) -> "RewriteChapterPlan":
-        ranges = sorted((segment.paragraph_range[0], segment.paragraph_range[1]) for segment in self.segments)
-        for index in range(1, len(ranges)):
-            prev_start, prev_end = ranges[index - 1]
-            cur_start, cur_end = ranges[index]
+        def _segment_sort_key(segment: RewriteSegment) -> tuple[int, int, int, int]:
+            if segment.char_offset_range is not None:
+                start, end = segment.char_offset_range
+                return (0, start, end, segment.paragraph_range[0])
+            start, end = segment.paragraph_range
+            return (1, start, end, start)
+
+        sorted_segments = sorted(self.segments, key=_segment_sort_key)
+        for index in range(1, len(sorted_segments)):
+            prev = sorted_segments[index - 1]
+            cur = sorted_segments[index]
+            if prev.char_offset_range is not None and cur.char_offset_range is not None:
+                prev_start, prev_end = prev.char_offset_range
+                cur_start, cur_end = cur.char_offset_range
+                if cur_start < prev_end:
+                    raise ValueError(
+                        "segment char_offset_range must not overlap "
+                        f"(previous={prev_start}-{prev_end}, current={cur_start}-{cur_end})"
+                    )
+                continue
+
+            prev_start, prev_end = prev.paragraph_range
+            cur_start, cur_end = cur.paragraph_range
             if cur_start <= prev_end:
                 raise ValueError(
                     "segment paragraph_range must not overlap "

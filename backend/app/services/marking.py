@@ -33,9 +33,13 @@ DEFAULT_CHAR_BUFFER_RATIO = 0.12
 DEFAULT_FALLBACK_EXPAND_RATIO = 1.20
 DEFAULT_FALLBACK_REWRITE_RATIO = 1.00
 DEFAULT_WINDOW_CONTEXT_SENTENCES = 1
-DEFAULT_WINDOW_MERGE_GAP_SENTENCES = 0
-DEFAULT_WINDOW_MAX_CHARS = 1_800
+DEFAULT_WINDOW_MERGE_GAP_SENTENCES = -1
+DEFAULT_WINDOW_MAX_CHARS = 1_200
 DEFAULT_WINDOW_MIN_SPLIT_CHARS = 420
+SOURCE_PARAGRAPH_MISMATCH_RATIO_THRESHOLD = 2.0
+SOURCE_PARAGRAPH_MISMATCH_MIN_DELTA = 6
+RULE_HIT_EVIDENCE_MIN_FRAGMENT_CHARS = 8
+RULE_HIT_CLUSTER_GAP_SENTENCES = 1
 SENTENCE_SPLITTER_VERSION = "cn-punct-v2"
 WINDOW_PLANNER_VERSION = "window-planner-v1"
 SENTENCE_TERMINATORS = {"。", "！", "？", "!", "?", "…"}
@@ -43,6 +47,7 @@ SENTENCE_CLOSERS = {'"', "'", "”", "’", "）", ")", "】", "]", "》", "」"
 CHAPTER_HEADING_RE = re.compile(
     r"^(?:第[\d零一二三四五六七八九十百千万两〇]+(?:章|节|回|卷|部|篇|集)(?:\s*.+)?|序章|前言|楔子|尾声|后记|番外.*)$"
 )
+RULE_HIT_EVIDENCE_SPLIT_RE = re.compile(r"(?:\r?\n)+|(?:…{2,}|\.{3,})")
 
 
 @dataclass(slots=True)
@@ -362,6 +367,8 @@ def _merge_scene_hits(
     current = sorted_hits[0]
     for hit in sorted_hits[1:]:
         gap = hit.sentence_range[0] - current.sentence_range[1] - 1
+        # merge_gap_sentences=-1 means only merge real overlap; adjacent
+        # sentence hits (gap=0) remain independent rewrite windows.
         if gap <= merge_gap_sentences:
             chosen = current if current.priority >= hit.priority else hit
             current = _SceneHit(
@@ -626,6 +633,287 @@ def _normalize_paragraph_range(
     return clamped_start, clamped_end
 
 
+def _coerce_int_pair(value: object) -> tuple[int, int] | None:
+    if not isinstance(value, (list, tuple)) or len(value) != 2:
+        return None
+    try:
+        start = int(value[0])
+        end = int(value[1])
+    except (TypeError, ValueError):
+        return None
+    return start, end
+
+
+def _clamp_sentence_range(
+    sentence_range: tuple[int, int] | None,
+    *,
+    sentence_count: int,
+) -> tuple[int, int] | None:
+    if sentence_range is None or sentence_count <= 0:
+        return None
+    start, end = sentence_range
+    start = max(1, min(sentence_count, int(start)))
+    end = max(start, min(sentence_count, int(end)))
+    return start, end
+
+
+def _should_use_sentence_scale_mapping(*, paragraph_count: int, source_upper_bound: int) -> bool:
+    if paragraph_count <= 0 or source_upper_bound <= paragraph_count:
+        return False
+    threshold = max(
+        int(math.ceil(paragraph_count * SOURCE_PARAGRAPH_MISMATCH_RATIO_THRESHOLD)),
+        paragraph_count + SOURCE_PARAGRAPH_MISMATCH_MIN_DELTA,
+    )
+    return source_upper_bound >= threshold
+
+
+def _normalize_sentence_range_from_source(
+    paragraph_range: tuple[int, int],
+    *,
+    sentence_count: int,
+    source_upper_bound: int,
+) -> tuple[int, int] | None:
+    if sentence_count <= 0:
+        return None
+
+    start, end = paragraph_range
+    start = max(1, int(start))
+    end = max(start, int(end))
+
+    upper = max(1, int(source_upper_bound or end))
+    mapped_start = int(math.floor((start - 1) * sentence_count / upper)) + 1
+    mapped_end = int(math.ceil(end * sentence_count / upper))
+
+    mapped_start = max(1, min(sentence_count, mapped_start))
+    mapped_end = max(mapped_start, min(sentence_count, mapped_end))
+    return mapped_start, mapped_end
+
+
+def _sentence_range_from_char_offsets(
+    sentence_spans: Sequence[SentenceSpan],
+    char_offset_range: tuple[int, int],
+) -> tuple[int, int] | None:
+    start, end = char_offset_range
+    if start < 0 or end <= start:
+        return None
+    hit_sentence_indexes: list[int] = []
+    for span in sentence_spans:
+        if span.end_offset <= start:
+            continue
+        if span.start_offset >= end:
+            break
+        hit_sentence_indexes.append(span.sentence_index)
+    if not hit_sentence_indexes:
+        return None
+    return min(hit_sentence_indexes), max(hit_sentence_indexes)
+
+
+def _evidence_fragments(evidence_text: str) -> list[str]:
+    raw = evidence_text.strip()
+    if not raw:
+        return []
+
+    fragments: list[str] = []
+    seen: set[str] = set()
+    for part in RULE_HIT_EVIDENCE_SPLIT_RE.split(raw):
+        cleaned = part.strip().strip("\"'“”‘’`()[]{}<>《》")
+        if len(cleaned) < RULE_HIT_EVIDENCE_MIN_FRAGMENT_CHARS:
+            continue
+        if cleaned in seen:
+            continue
+        seen.add(cleaned)
+        fragments.append(cleaned)
+
+    if fragments:
+        return fragments
+
+    fallback = raw.strip().strip("\"'“”‘’`()[]{}<>《》")
+    if len(fallback) >= RULE_HIT_EVIDENCE_MIN_FRAGMENT_CHARS:
+        return [fallback]
+    return []
+
+
+def _all_literal_match_spans(text: str, fragment: str, *, limit: int = 6) -> list[tuple[int, int]]:
+    if not text or not fragment:
+        return []
+    matches: list[tuple[int, int]] = []
+    cursor = 0
+    while len(matches) < limit:
+        start = text.find(fragment, cursor)
+        if start < 0:
+            break
+        end = start + len(fragment)
+        matches.append((start, end))
+        cursor = start + 1
+    return matches
+
+
+def _ground_scene_range_from_rule_hits(
+    scene: object,
+    *,
+    chapter_text: str,
+    chapter_sentence_index: ChapterSentenceIndex,
+) -> tuple[tuple[int, int], tuple[int, int], tuple[int, int]] | None:
+    sentence_spans = chapter_sentence_index.sentence_spans
+    if not chapter_text or not sentence_spans:
+        return None
+
+    raw_hits = list(getattr(scene, "rule_hits", None) or [])
+    if not raw_hits:
+        return None
+
+    clusters: list[dict[str, object]] = []
+    for hit_index, rule_hit in enumerate(raw_hits):
+        evidence_text = str(getattr(rule_hit, "evidence_text", "") or "").strip()
+        if not evidence_text:
+            continue
+        for fragment in _evidence_fragments(evidence_text):
+            for start, end in _all_literal_match_spans(chapter_text, fragment):
+                sentence_range = _sentence_range_from_char_offsets(sentence_spans, (start, end))
+                if sentence_range is None:
+                    continue
+                weight = len(fragment)
+                merged = False
+                for cluster in clusters:
+                    cluster_sentence_range = cluster["sentence_range"]
+                    if not isinstance(cluster_sentence_range, tuple):
+                        continue
+                    cluster_start = int(cluster_sentence_range[0])
+                    cluster_end = int(cluster_sentence_range[1])
+                    separated = (
+                        sentence_range[0] > cluster_end + RULE_HIT_CLUSTER_GAP_SENTENCES + 1
+                        or cluster_start > sentence_range[1] + RULE_HIT_CLUSTER_GAP_SENTENCES + 1
+                    )
+                    if separated:
+                        continue
+                    cluster["sentence_range"] = (
+                        min(cluster_start, sentence_range[0]),
+                        max(cluster_end, sentence_range[1]),
+                    )
+                    cluster["char_offset_range"] = (
+                        min(int(cluster["char_offset_range"][0]), start),
+                        max(int(cluster["char_offset_range"][1]), end),
+                    )
+                    cluster["weight"] = int(cluster["weight"]) + weight
+                    hit_ids = cluster["hit_ids"]
+                    if isinstance(hit_ids, set):
+                        hit_ids.add(hit_index)
+                    merged = True
+                    break
+                if merged:
+                    continue
+                clusters.append(
+                    {
+                        "sentence_range": sentence_range,
+                        "char_offset_range": (start, end),
+                        "weight": weight,
+                        "hit_ids": {hit_index},
+                    }
+                )
+
+    if not clusters:
+        return None
+
+    best = sorted(
+        clusters,
+        key=lambda item: (
+            -len(item["hit_ids"]) if isinstance(item["hit_ids"], set) else 0,
+            -int(item["weight"]),
+            (int(item["sentence_range"][1]) - int(item["sentence_range"][0]) + 1),
+            int(item["sentence_range"][0]),
+        ),
+    )[0]
+    best_sentence_range = best["sentence_range"]
+    if not isinstance(best_sentence_range, tuple):
+        return None
+    paragraph_range = _window_paragraph_range_from_sentence_range(sentence_spans, best_sentence_range)
+    char_offset_range = _sentence_char_range(sentence_spans, best_sentence_range)
+    if paragraph_range is None or char_offset_range is None:
+        return None
+    return paragraph_range, best_sentence_range, char_offset_range
+
+
+def _resolve_scene_ranges(
+    scene: object,
+    *,
+    chapter_text: str,
+    chapter_sentence_index: ChapterSentenceIndex,
+    paragraph_count: int,
+    source_upper_bound: int,
+    chapter_length: int,
+) -> tuple[tuple[int, int], tuple[int, int] | None, tuple[int, int] | None]:
+    raw_paragraph_range = tuple(getattr(scene, "paragraph_range"))
+    sentence_count = len(chapter_sentence_index.sentence_spans)
+
+    grounded_from_hits = _ground_scene_range_from_rule_hits(
+        scene,
+        chapter_text=chapter_text,
+        chapter_sentence_index=chapter_sentence_index,
+    )
+
+    scene_sentence_range = _clamp_sentence_range(
+        _coerce_int_pair(getattr(scene, "sentence_range", None)),
+        sentence_count=sentence_count,
+    )
+    if grounded_from_hits is not None:
+        return grounded_from_hits
+    if scene_sentence_range is not None:
+        paragraph_range = _window_paragraph_range_from_sentence_range(
+            chapter_sentence_index.sentence_spans,
+            scene_sentence_range,
+        )
+        char_offset_range = _sentence_char_range(chapter_sentence_index.sentence_spans, scene_sentence_range)
+        if paragraph_range is not None and char_offset_range is not None:
+            return paragraph_range, scene_sentence_range, char_offset_range
+
+    scene_char_range = _coerce_int_pair(getattr(scene, "char_offset_range", None))
+    if scene_char_range is not None:
+        char_start = max(0, scene_char_range[0])
+        char_end = min(chapter_length, scene_char_range[1])
+        if char_end > char_start:
+            clamped_char_range = (char_start, char_end)
+            sentence_range_from_char = _sentence_range_from_char_offsets(
+                chapter_sentence_index.sentence_spans,
+                clamped_char_range,
+            )
+            if sentence_range_from_char is not None:
+                paragraph_range = _window_paragraph_range_from_sentence_range(
+                    chapter_sentence_index.sentence_spans,
+                    sentence_range_from_char,
+                )
+                if paragraph_range is not None:
+                    return paragraph_range, sentence_range_from_char, clamped_char_range
+
+    if _should_use_sentence_scale_mapping(
+        paragraph_count=paragraph_count,
+        source_upper_bound=source_upper_bound,
+    ):
+        sentence_range = _normalize_sentence_range_from_source(
+            raw_paragraph_range,
+            sentence_count=sentence_count,
+            source_upper_bound=source_upper_bound,
+        )
+        if sentence_range is not None:
+            paragraph_range = _window_paragraph_range_from_sentence_range(
+                chapter_sentence_index.sentence_spans,
+                sentence_range,
+            )
+            char_offset_range = _sentence_char_range(chapter_sentence_index.sentence_spans, sentence_range)
+            if paragraph_range is not None and char_offset_range is not None:
+                return paragraph_range, sentence_range, char_offset_range
+
+    normalized_paragraph_range = _normalize_paragraph_range(
+        raw_paragraph_range,
+        paragraph_count=paragraph_count,
+        source_upper_bound=source_upper_bound,
+    )
+    sentence_range, char_offset_range = _segment_sentence_and_offset_ranges(
+        chapter_sentence_index,
+        normalized_paragraph_range,
+    )
+    return normalized_paragraph_range, sentence_range, char_offset_range
+
+
 def _is_heading_like_paragraph(text: str) -> bool:
     candidate = text.strip().replace("\u3000", " ")
     if not candidate:
@@ -803,6 +1091,7 @@ def build_chapter_mark_plan(
     chapter_fingerprint = _hash_text(chapter.content)
     resolved_plan_version = plan_version or _hash_text(f"{chapter.id}:{chapter_fingerprint}")[:16]
     paragraph_count = len(chapter_sentence_index.paragraphs)
+    chapter_length = len(chapter.content)
     source_upper_bound = max(
         (int(getattr(scene, "paragraph_range")[1]) for scene in analysis.scenes),
         default=paragraph_count,
@@ -810,15 +1099,17 @@ def build_chapter_mark_plan(
     raw_hits: list[_SceneHit] = []
     for scene in analysis.scenes:
         try:
-            normalized_range = _normalize_paragraph_range(
-                tuple(getattr(scene, "paragraph_range")),
+            normalized_range, sentence_range, char_offset_range = _resolve_scene_ranges(
+                scene,
+                chapter_text=chapter.content,
+                chapter_sentence_index=chapter_sentence_index,
                 paragraph_count=paragraph_count,
                 source_upper_bound=source_upper_bound,
+                chapter_length=chapter_length,
             )
             if _is_heading_only_range(chapter_sentence_index, normalized_range):
                 # Chapter headings should stay stable and are not valid rewrite targets.
                 continue
-            sentence_range, char_offset_range = _segment_sentence_and_offset_ranges(chapter_sentence_index, normalized_range)
             rule = _select_rewrite_rule(scene.scene_type, rewrite_rules)
             if rule is None:
                 rewrite_potential = getattr(scene, "rewrite_potential", None)

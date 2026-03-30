@@ -227,6 +227,127 @@ def _analysis_with_heading_scene() -> ChapterAnalysis:
     )
 
 
+def _chapter_two_paragraph_eight_sentences() -> Chapter:
+    content = "\n\n".join(
+        [
+            "甲一。甲二。甲三。甲四。",
+            "乙一。乙二。乙三。乙四。",
+        ]
+    )
+    return Chapter(
+        id="chapter-sentence-scale",
+        index=3,
+        title="第三章",
+        content=content,
+        char_count=len(content),
+        paragraph_count=2,
+        start_offset=0,
+        end_offset=len(content),
+    )
+
+
+def _analysis_with_explicit_sentence_scene() -> ChapterAnalysis:
+    return ChapterAnalysis(
+        summary="分析结果给出精确句子范围。",
+        characters=[],
+        key_events=[],
+        scenes=[
+            SceneSegment(
+                scene_type="战斗",
+                paragraph_range=(1, 2),
+                sentence_range=(4, 4),
+                rewrite_potential=RewritePotential(
+                    expandable=True,
+                    rewritable=True,
+                    suggestion="仅改第四句。",
+                    priority=5,
+                ),
+            ),
+        ],
+        location="室内",
+        tone="平静",
+    )
+
+
+def _analysis_with_source_scale_mismatch_scene() -> ChapterAnalysis:
+    return ChapterAnalysis(
+        summary="源范围索引尺度远大于章节段落数。",
+        characters=[],
+        key_events=[],
+        scenes=[
+            SceneSegment(
+                scene_type="战斗",
+                paragraph_range=(10, 12),
+                rewrite_potential=RewritePotential(
+                    expandable=True,
+                    rewritable=True,
+                    suggestion="命中中段句子。",
+                    priority=5,
+                ),
+            ),
+            SceneSegment(
+                scene_type="环境描写",
+                paragraph_range=(30, 34),
+                rewrite_potential=RewritePotential(
+                    expandable=False,
+                    rewritable=False,
+                    suggestion="仅用于抬高源范围上限。",
+                    priority=1,
+                ),
+            ),
+        ],
+        location="走廊",
+        tone="紧张",
+    )
+
+
+def _chapter_for_rule_hit_grounding() -> Chapter:
+    content = "\n\n".join(
+        [
+            "第一句只是背景交代。第二句还是普通叙事。第三句两人开始在走廊里拥吻。第四句他伸手撩起裙摆。第五句两人继续纠缠。",
+        ]
+    )
+    return Chapter(
+        id="chapter-rule-hit-grounding",
+        index=4,
+        title="第四章",
+        content=content,
+        char_count=len(content),
+        paragraph_count=1,
+        start_offset=0,
+        end_offset=len(content),
+    )
+
+
+def _analysis_with_overwide_sentence_range_and_rule_hit() -> ChapterAnalysis:
+    return ChapterAnalysis(
+        summary="模型给了过宽范围，但 evidence 是精确的。",
+        characters=[],
+        key_events=[],
+        scenes=[
+            SceneSegment(
+                scene_type="亲吻场景",
+                paragraph_range=(1, 1),
+                sentence_range=(1, 5),
+                rewrite_potential=RewritePotential(
+                    expandable=True,
+                    rewritable=True,
+                    suggestion="只应命中后段亲密动作。",
+                    priority=5,
+                ),
+                rule_hits=[
+                    {
+                        "trigger_condition": "任何嘴唇接触描述",
+                        "evidence_text": "第三句两人开始在走廊里拥吻。第四句他伸手撩起裙摆。",
+                    }
+                ],
+            ),
+        ],
+        location="走廊",
+        tone="暧昧",
+    )
+
+
 def _rewrite_rules() -> list[RewriteRule]:
     return [
         RewriteRule(scene_type="战斗", strategies=["rewrite", "expand"], target_ratio=2.0, priority=1, enabled=True),
@@ -304,6 +425,45 @@ def test_build_chapter_mark_plan_normalizes_out_of_range_scene_paragraphs() -> N
     assert plan.segments[0].paragraph_range == (1, 1)
     assert plan.segments[1].paragraph_range == (3, 4)
     assert all(1 <= start <= end <= 4 for start, end in (segment.paragraph_range for segment in plan.segments))
+
+
+def test_build_chapter_mark_plan_prefers_explicit_sentence_range() -> None:
+    chapter = _chapter_two_paragraph_eight_sentences()
+    plan = build_chapter_mark_plan(chapter, _analysis_with_explicit_sentence_scene(), _rewrite_rules())
+
+    assert len(plan.segments) == 1
+    segment = plan.segments[0]
+    assert segment.paragraph_range == (1, 1)
+    assert segment.sentence_range == (4, 4)
+    assert segment.char_offset_range is not None
+    start, end = segment.char_offset_range
+    assert chapter.content[start:end] == "甲四。"
+
+
+def test_build_chapter_mark_plan_uses_sentence_scale_mapping_when_source_mismatch_is_large() -> None:
+    chapter = _chapter_two_paragraph_eight_sentences()
+    plan = build_chapter_mark_plan(chapter, _analysis_with_source_scale_mismatch_scene(), _rewrite_rules())
+
+    assert len(plan.segments) == 1
+    segment = plan.segments[0]
+    assert segment.paragraph_range == (1, 1)
+    assert segment.sentence_range == (3, 3)
+    assert segment.char_offset_range is not None
+    start, end = segment.char_offset_range
+    assert start > 0
+    assert chapter.content[start:end] == "甲三。"
+
+
+def test_build_chapter_mark_plan_prefers_rule_hit_grounding_over_overwide_scene_range() -> None:
+    chapter = _chapter_for_rule_hit_grounding()
+    plan = build_chapter_mark_plan(chapter, _analysis_with_overwide_sentence_range_and_rule_hit(), _rewrite_rules())
+
+    assert len(plan.segments) == 1
+    segment = plan.segments[0]
+    assert segment.sentence_range == (3, 4)
+    assert segment.char_offset_range is not None
+    start, end = segment.char_offset_range
+    assert chapter.content[start:end] == "第三句两人开始在走廊里拥吻。第四句他伸手撩起裙摆。"
 
 
 def test_build_chapter_mark_plan_skips_heading_only_segments() -> None:

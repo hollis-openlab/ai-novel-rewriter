@@ -36,6 +36,8 @@ ANALYZE_USER_TEMPLATE = """
 2. `scenes` 中每个场景必须包含：
    - `scene_type`
    - `paragraph_range`（用于定位命中范围）
+   - `sentence_range`（可选，建议提供命中句子范围 `[start, end]`）
+   - `char_offset_range`（可选，建议提供命中字符范围 `[start, end)`）
    - `rule_hits`（列出命中的触发条件与对应原文证据）
    - `rewrite_potential`
 3. `rule_hits` 每个元素包含：

@@ -344,6 +344,50 @@ def test_execute_rewrite_segment_keeps_output_when_length_out_of_range() -> None
     asyncio.run(_run())
 
 
+def test_execute_rewrite_segment_keeps_overshoot_output_without_error() -> None:
+    async def _run() -> None:
+        chapter = _chapter()
+        analysis = _analysis()
+        segment = _segment(chapter, (1, 2)).model_copy(update={"target_chars_min": 40, "target_chars_max": 80})
+        overshoot_text = "这是明显超长的改写内容。" * 20
+
+        async def fake_complete(api_key: str, base_url: str, request, *, provider_type=ProviderType.OPENAI_COMPATIBLE, transport=None):
+            return CompletionResponse(
+                provider_type=provider_type,
+                model_name=request.model_name,
+                text=overshoot_text,
+                latency_ms=9,
+                usage=UsageInfo(prompt_tokens=10, completion_tokens=11, total_tokens=21),
+                raw_response={"choices": [{"finish_reason": "stop"}], "request_id": "req-length-overshoot"},
+            )
+
+        request = RewriteSegmentRequest(
+            novel_id="novel-1",
+            task_id="task-1",
+            chapter=chapter,
+            analysis=analysis,
+            segment=segment,
+            rewrite_rules=[_rewrite_rule()],
+            global_prompt="请保持文风统一",
+            provider_type=ProviderType.OPENAI_COMPATIBLE,
+            api_key="sk-test",
+            base_url="https://example.com/v1",
+            model_name="gpt-4o-mini",
+            generation={"temperature": 0.2},
+        )
+
+        result = await execute_rewrite_segment(request, llm_complete=fake_complete)
+        assert result.status == RewriteResultStatus.COMPLETED
+        assert result.rewritten_text == overshoot_text
+        assert result.error_code is None
+        assert result.has_warnings is True
+        assert "REWRITE_LENGTH_SEVERE_OUTLIER" in (result.warning_codes or [])
+        assert len(result.window_attempts) == 1
+        assert result.window_attempts[0].action == "accepted"
+
+    asyncio.run(_run())
+
+
 def test_execute_rewrite_segment_retries_on_fragment_and_accepts_second_attempt() -> None:
     async def _run() -> None:
         chapter = _chapter()

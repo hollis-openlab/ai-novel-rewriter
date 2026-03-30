@@ -551,8 +551,10 @@ def _length_outlier_level(
         return None, None
     if minimum > 0 and actual_chars < max(1, int(minimum * SEVERE_LENGTH_UNDERSHOOT_RATIO)):
         return WindowGuardrailLevel.HARD_FAIL, "REWRITE_LENGTH_SEVERE_OUTLIER"
+    # Over-length outputs should not be treated as hard failures; keep them as warnings
+    # so the rewritten content can still be kept for review/acceptance.
     if maximum > 0 and actual_chars > int(maximum * SEVERE_LENGTH_OVERSHOOT_RATIO):
-        return WindowGuardrailLevel.HARD_FAIL, "REWRITE_LENGTH_SEVERE_OUTLIER"
+        return WindowGuardrailLevel.WARNING, "REWRITE_LENGTH_SEVERE_OUTLIER"
     if minimum > 0 and actual_chars < max(1, int(minimum * MILD_LENGTH_UNDERSHOOT_RATIO)):
         return WindowGuardrailLevel.WARNING, "REWRITE_LENGTH_MILD_OUTLIER"
     if maximum > 0 and actual_chars > int(maximum * MILD_LENGTH_OVERSHOOT_RATIO):
@@ -1042,6 +1044,7 @@ async def _execute_rewrite_segment_once(
         )
         if not validation.passed:
             if validation.error_code == "REWRITE_LENGTH_OUT_OF_RANGE":
+                length_undershoot = _is_length_validation_undershoot(validation)
                 return _build_rewrite_result(
                     request,
                     status=RewriteResultStatus.COMPLETED,
@@ -1050,8 +1053,10 @@ async def _execute_rewrite_segment_once(
                     attempts=1,
                     anchor_verified=True,
                     provider_used=completion.provider_type.value,
-                    error_code=validation.error_code,
-                    error_detail=_json_detail_text(validation.details) or validation.error_message,
+                    # Keep undershoot as a validation error, but do not treat
+                    # over-length output as an error.
+                    error_code=validation.error_code if length_undershoot else None,
+                    error_detail=(_json_detail_text(validation.details) or validation.error_message) if length_undershoot else None,
                     provider_raw_response=completion.raw_response,
                     validation_details=_with_slice_details(validation.details, slice_details=slice_details),
                 )
@@ -1273,6 +1278,7 @@ async def _execute_rewrite_segment_once(
 
     if not final_validation.passed:
         if final_validation.error_code == "REWRITE_LENGTH_OUT_OF_RANGE":
+            length_undershoot = _is_length_validation_undershoot(final_validation)
             return _build_rewrite_result(
                 request,
                 status=RewriteResultStatus.COMPLETED,
@@ -1281,8 +1287,10 @@ async def _execute_rewrite_segment_once(
                 attempts=attempts,
                 anchor_verified=True,
                 provider_used=provider_used,
-                error_code=final_validation.error_code,
-                error_detail=_json_detail_text(final_validation.details) or final_validation.error_message,
+                # Keep undershoot as a validation error, but do not treat
+                # over-length output as an error.
+                error_code=final_validation.error_code if length_undershoot else None,
+                error_detail=(_json_detail_text(final_validation.details) or final_validation.error_message) if length_undershoot else None,
                 provider_raw_response=provider_raw_response,
                 validation_details=final_validation_details,
             )

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { stageStatusForChapter } from '@/pages/NovelDetail'
+import { mergeAnalyzeAndMarkStatus, stageStatusForChapter } from '@/pages/NovelDetail'
 import type { ChapterListItem, StageStatus } from '@/types'
 
 function chapterWithRewriteStatus(status: StageStatus): ChapterListItem {
@@ -35,5 +35,46 @@ describe('stageStatusForChapter', () => {
       },
     })
     expect(resolved).toBe('running')
+  })
+})
+
+describe('mergeAnalyzeAndMarkStatus', () => {
+  function stage(status: StageStatus, extra: Partial<{
+    chapters_total: number
+    chapters_done: number
+    error_message: string
+  }> = {}) {
+    return {
+      status,
+      chapters_total: extra.chapters_total ?? 10,
+      chapters_done: extra.chapters_done ?? 0,
+      error_message: extra.error_message,
+    }
+  }
+
+  it('returns completed when mark is completed even if analyze is failed', () => {
+    const merged = mergeAnalyzeAndMarkStatus(
+      stage('failed', { chapters_done: 10, error_message: 'Auto mark stage execution failed' }),
+      stage('completed', { chapters_done: 10 })
+    )
+    expect(merged.status).toBe('completed')
+    expect(merged.error_message).toBeUndefined()
+  })
+
+  it('keeps pending when analyze is completed but mark is pending', () => {
+    const merged = mergeAnalyzeAndMarkStatus(
+      stage('completed', { chapters_done: 10 }),
+      stage('pending', { chapters_done: 0 })
+    )
+    expect(merged.status).toBe('pending')
+  })
+
+  it('surfaces failed when mark fails', () => {
+    const merged = mergeAnalyzeAndMarkStatus(
+      stage('completed', { chapters_done: 10 }),
+      stage('failed', { chapters_done: 3, error_message: 'mark failed' })
+    )
+    expect(merged.status).toBe('failed')
+    expect(merged.error_message).toBe('mark failed')
   })
 })

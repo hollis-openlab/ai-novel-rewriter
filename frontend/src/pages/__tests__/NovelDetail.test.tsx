@@ -479,6 +479,120 @@ describe('NovelDetail workbench', () => {
     expect(await screen.findByText('运行历史')).toBeInTheDocument()
   })
 
+  it('keeps custom-rule save feedback visible and keeps the saved rule selected for preview', async () => {
+    const user = userEvent.setup()
+    vi.mocked(splitRulesApi.get).mockResolvedValue({
+      rules_version: 'rules-v1',
+      builtin_rules: [
+        {
+          id: 'builtin-arabic',
+          name: '阿拉伯数字章节号',
+          pattern: '^第\\s*\\d+\\s*章.*$',
+          priority: 20,
+          enabled: true,
+          builtin: true,
+        },
+      ],
+      custom_rules: [
+        {
+          id: 'custom-1',
+          name: '自定义规则',
+          pattern: '^正文.*$',
+          priority: 5,
+          enabled: true,
+          builtin: false,
+        },
+      ],
+    })
+    vi.mocked(splitRulesApi.updateCustom).mockResolvedValue({
+      rules_version: 'rules-v2',
+      builtin_rules: [
+        {
+          id: 'builtin-arabic',
+          name: '阿拉伯数字章节号',
+          pattern: '^第\\s*\\d+\\s*章.*$',
+          priority: 20,
+          enabled: true,
+          builtin: true,
+        },
+      ],
+      custom_rules: [
+        {
+          id: 'custom-1',
+          name: '自定义规则',
+          pattern: '^第\\s*\\d+\\s*章.*$',
+          priority: 5,
+          enabled: true,
+          builtin: false,
+        },
+      ],
+    })
+
+    await renderNovelDetail()
+    await user.click(screen.getByRole('button', { name: '分章' }))
+
+    const regexInput = screen.getByDisplayValue('^正文.*$')
+    await user.clear(regexInput)
+    await user.type(regexInput, '^第\\\\s*\\\\d+\\\\s*章.*$')
+    await user.click(screen.getByRole('button', { name: '保存' }))
+
+    await waitFor(() => {
+      expect(splitRulesApi.updateCustom).toHaveBeenCalledWith(
+        'custom-1',
+        expect.objectContaining({
+          name: '自定义规则',
+          priority: 5,
+          enabled: true,
+        })
+      )
+    })
+    expect(await screen.findByText('自定义规则已更新。')).toBeInTheDocument()
+    expect((screen.getByLabelText('当前预览规则') as HTMLSelectElement).value).toBe('custom-1')
+  })
+
+  it('shows low-match reason and heading samples in split preview', async () => {
+    const user = userEvent.setup()
+    vi.mocked(splitRulesApi.get).mockResolvedValue({
+      rules_version: 'rules-v1',
+      builtin_rules: [
+        {
+          id: 'builtin-arabic',
+          name: '阿拉伯数字章节号',
+          pattern: '^第\\s*\\d+\\s*章.*$',
+          priority: 20,
+          enabled: true,
+          builtin: true,
+        },
+      ],
+      custom_rules: [],
+    })
+    vi.mocked(splitRulesApi.preview).mockResolvedValue({
+      preview_token: 'preview-token',
+      novel_id: 'novel-1',
+      source_revision: 'source-rev-1',
+      rules_version: 'rules-v1',
+      boundary_hash: 'boundary-hash',
+      estimated_chapters: 3,
+      matched_count: 2,
+      matched_lines: [
+        { paragraph_index: 2, line_number: 2, text: '正文 第一章', rule_id: 'builtin-arabic', rule_name: '阿拉伯数字章节号' },
+        { paragraph_index: 162, line_number: 162, text: '正文 第二章', rule_id: 'builtin-arabic', rule_name: '阿拉伯数字章节号' },
+      ],
+      preview_valid: false,
+      failure_reason: 'MATCH_COUNT_TOO_LOW',
+      chapters: [],
+      sample_size: 10,
+    })
+
+    await renderNovelDetail()
+    await user.click(screen.getByRole('button', { name: '分章' }))
+    await user.click(screen.getByRole('button', { name: '按选中规则预览' }))
+
+    expect(await screen.findByText('当前规则仅命中 2 处标题，无法稳定切分。')).toBeInTheDocument()
+    expect(screen.getByText('命中样本（最多 10 条）')).toBeInTheDocument()
+    expect(screen.getByText(/第 2 行 · 正文 第一章/)).toBeInTheDocument()
+  })
+
   it('switches center view modes including flat diff', async () => {
     const user = userEvent.setup()
     await renderNovelDetail()
@@ -1031,8 +1145,13 @@ describe('NovelDetail workbench', () => {
     expect(stageRetryMock).not.toHaveBeenCalled()
   })
 
-  it('disables chapter-level rewrite action when the chapter has no marked segments', async () => {
+  it('shows noop feedback for chapter-level rewrite action when the chapter has no marked segments', async () => {
     const user = userEvent.setup()
+    retryChapterMock.mockResolvedValueOnce({
+      status: 'completed',
+      segments_total: 0,
+      failed_segments: 0,
+    })
     await renderNovelDetail()
 
     await user.click(screen.getByRole('button', { name: /^改写\s*\d*$/ }))
@@ -1041,8 +1160,12 @@ describe('NovelDetail workbench', () => {
     await user.click(screen.getByRole('button', { name: '操作' }))
 
     const chapterActionButton = await screen.findByRole('button', { name: '重跑当前章节' })
-    expect(chapterActionButton).toBeDisabled()
-    expect(screen.getByText('当前章节未命中可改写段落，无需执行改写重跑。')).toBeInTheDocument()
+    expect(chapterActionButton).not.toBeDisabled()
+    await user.click(chapterActionButton)
+    await waitFor(() => {
+      expect(retryChapterMock).toHaveBeenCalledWith('novel-1', 'rewrite', 3, { provider_id: 'provider-1', force_rerun: true })
+    })
+    expect(await screen.findByText(/本章未命中可改写段落（segments_total=0/)).toBeInTheDocument()
 
     const fallbackButton = await screen.findByRole('button', { name: '回退本章到原文' })
     expect(fallbackButton).not.toBeDisabled()

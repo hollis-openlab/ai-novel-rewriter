@@ -508,6 +508,59 @@ def test_list_chapters_prefers_only_latest_run_states_per_chapter(tmp_path: Path
     asyncio.run(_run())
 
 
+def test_list_chapters_keeps_pending_when_failed_run_has_no_chapter_states(tmp_path: Path) -> None:
+    async def _run() -> None:
+        engine, sessionmaker = await _prepare_session(tmp_path / "chapters-status-failed-no-state.db")
+        store = ArtifactStore(tmp_path / "data-status-failed-no-state")
+        store.ensure_novel_dirs("novel-1")
+        store.ensure_task_scaffold("novel-1", "task-1")
+        store.write_active_task_id("novel-1", "task-1")
+        try:
+            await _seed_db(sessionmaker)
+            extra_content = _chapter_content()
+            async with sessionmaker() as session:
+                session.add(
+                    ChapterRow(
+                        id="chapter-2",
+                        task_id="task-1",
+                        chapter_index=2,
+                        title="第二章",
+                        content=extra_content,
+                        start_offset=0,
+                        end_offset=len(extra_content),
+                        char_count=len(extra_content),
+                        paragraph_count=3,
+                    )
+                )
+                session.add(
+                    StageRun(
+                        id="task-1-mark-1",
+                        task_id="task-1",
+                        stage="mark",
+                        run_seq=1,
+                        status=StageRunStatus.FAILED.value,
+                        chapters_total=2,
+                        chapters_done=0,
+                        error_message="mark failed before chapter states were initialized",
+                    )
+                )
+                await session.commit()
+
+            app = _build_app(sessionmaker, store)
+            with TestClient(app) as client:
+                response = client.get("/novels/novel-1/chapters")
+                assert response.status_code == 200
+                payload = response.json()
+                by_index = {item["index"]: item for item in payload["data"]}
+
+                assert by_index[1]["stages"]["mark"] == "pending"
+                assert by_index[2]["stages"]["mark"] == "pending"
+        finally:
+            await engine.dispose()
+
+    asyncio.run(_run())
+
+
 def test_list_chapters_marks_rewrite_completed_when_no_marked_segments(tmp_path: Path) -> None:
     async def _run() -> None:
         engine, sessionmaker = await _prepare_session(tmp_path / "chapters-no-rewrite.db")

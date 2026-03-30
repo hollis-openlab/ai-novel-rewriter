@@ -74,6 +74,57 @@ def _analysis(*, location: str = "城门", tone: str = "紧张", character_name:
     )
 
 
+def _analysis_with_source_scale_mismatch() -> ChapterAnalysis:
+    return ChapterAnalysis(
+        summary=_long_summary(),
+        characters=[],
+        key_events=[],
+        scenes=[
+            SceneSegment(
+                scene_type="战斗",
+                paragraph_range=(10, 12),
+                rewrite_potential=RewritePotential(
+                    expandable=True,
+                    rewritable=True,
+                    suggestion="命中中段句子",
+                    priority=5,
+                ),
+            )
+        ],
+        location="城门",
+        tone="紧张",
+    )
+
+
+def _analysis_with_overwide_sentence_range_and_rule_hit() -> ChapterAnalysis:
+    return ChapterAnalysis(
+        summary=_long_summary(),
+        characters=[],
+        key_events=[],
+        scenes=[
+            SceneSegment(
+                scene_type="亲吻场景",
+                paragraph_range=(1, 1),
+                sentence_range=(1, 5),
+                rewrite_potential=RewritePotential(
+                    expandable=True,
+                    rewritable=True,
+                    suggestion="只应命中后段亲密动作",
+                    priority=5,
+                ),
+                rule_hits=[
+                    {
+                        "trigger_condition": "任何嘴唇接触描述",
+                        "evidence_text": "第三句两人开始在走廊里拥吻。第四句他伸手撩起裙摆。",
+                    }
+                ],
+            )
+        ],
+        location="走廊",
+        tone="暧昧",
+    )
+
+
 def _chapter_text() -> str:
     return "第一章\n\n主角在城门外观察局势，随后进入城中。"
 
@@ -253,6 +304,50 @@ def test_analyze_chapter_enriches_scene_rule_hits_from_chapter_text() -> None:
     assert any("战斗" in hit.evidence_text for hit in first_scene_hits)
 
 
+def test_analyze_chapter_enriches_sentence_and_char_spans() -> None:
+    chapter_text = "\n\n".join(
+        [
+            "甲一。甲二。甲三。甲四。",
+            "乙一。乙二。乙三。乙四。",
+        ]
+    )
+    req = _request(chapter_index=1, chapter_text=chapter_text)
+    analysis = _analysis_with_source_scale_mismatch()
+
+    async def fake_complete(api_key, base_url, request, *, provider_type, transport=None):  # noqa: ANN001, ANN003
+        return _completion_from_analysis(analysis)
+
+    result = asyncio.run(analyze_chapter(req, llm_complete=fake_complete))
+
+    assert result.validation.passed is True
+    assert result.analysis.scenes
+    scene = result.analysis.scenes[0]
+    assert scene.paragraph_range == (2, 2)
+    assert scene.sentence_range == (7, 8)
+    assert scene.char_offset_range is not None
+    start, end = scene.char_offset_range
+    assert 0 < start < end <= len(chapter_text)
+    assert chapter_text[start:end] == "乙三。乙四。"
+
+
+def test_analyze_chapter_prefers_rule_hit_grounding_over_overwide_scene_range() -> None:
+    chapter_text = "第一句只是背景交代。第二句还是普通叙事。第三句两人开始在走廊里拥吻。第四句他伸手撩起裙摆。第五句两人继续纠缠。"
+    req = _request(chapter_index=1, chapter_text=chapter_text)
+    analysis = _analysis_with_overwide_sentence_range_and_rule_hit()
+
+    async def fake_complete(api_key, base_url, request, *, provider_type, transport=None):  # noqa: ANN001, ANN003
+        return _completion_from_analysis(analysis)
+
+    result = asyncio.run(analyze_chapter(req, llm_complete=fake_complete))
+
+    assert result.validation.passed is True
+    scene = result.analysis.scenes[0]
+    assert scene.sentence_range == (3, 4)
+    assert scene.char_offset_range is not None
+    start, end = scene.char_offset_range
+    assert chapter_text[start:end] == "第三句两人开始在走廊里拥吻。第四句他伸手撩起裙摆。"
+
+
 def test_persist_analysis_result_writes_chapter_and_aggregate_artifacts(tmp_path: Path) -> None:
     store = ArtifactStore(tmp_path)
     result = AnalyzeChapterResult(
@@ -314,6 +409,37 @@ def test_rebuild_and_update_analysis_artifact_overwrite_aggregate(tmp_path: Path
     assert summary[1]["location"] == "山路"
     assert trajectory[0]["chapter_index"] == 2
     assert trajectory[0]["chapter_title"] == "第二章"
+
+
+def test_update_analysis_artifact_persists_sentence_and_char_spans(tmp_path: Path) -> None:
+    store = ArtifactStore(tmp_path)
+    chapter_text = "\n\n".join(
+        [
+            "甲一。甲二。甲三。甲四。",
+            "乙一。乙二。乙三。乙四。",
+        ]
+    )
+
+    update_analysis_artifact(
+        store,
+        "novel-1",
+        "task-1",
+        1,
+        _analysis_with_source_scale_mismatch(),
+        chapter_title="第一章",
+        chapter_text=chapter_text,
+    )
+
+    chapter_path = chapter_analysis_path(store, "novel-1", "task-1", 1)
+    payload = json.loads(chapter_path.read_text(encoding="utf-8"))
+    scenes = payload.get("analysis", {}).get("scenes", [])
+    assert isinstance(scenes, list) and scenes
+    first_scene = scenes[0]
+    assert first_scene["paragraph_range"] == [2, 2]
+    assert first_scene["sentence_range"] == [7, 8]
+    assert first_scene["char_offset_range"] is not None
+    char_start, char_end = first_scene["char_offset_range"]
+    assert 0 < char_start < char_end <= len(chapter_text)
 
 
 def test_batch_analyze_chapters_uses_submit_hook() -> None:

@@ -96,6 +96,7 @@ class StageActionRequest(BaseModel):
 class StageChapterRetryRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
+    force_rerun: bool = False
     provider_id: str | None = None
     rewrite_target_chars: int | None = Field(default=None, ge=0)
     rewrite_target_added_chars: int | None = Field(default=None, ge=0)

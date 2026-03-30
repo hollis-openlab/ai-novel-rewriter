@@ -1032,6 +1032,14 @@ async def list_chapters(
                 # fallback that can incorrectly mark earlier chapters as completed.
                 per_stage[stage] = StageStatus.PENDING
                 continue
+            if normalized_latest_status == StageStatus.FAILED:
+                # Stage-level failed runs may not have per-chapter states (for
+                # example, mark plan build fails before any chapter is marked as
+                # running). In that case, avoid falsely pinning the first
+                # chapter to failed/risk; only preserve completed progress.
+                chapters_done = max(0, min(len(sorted_chapters), int(latest_run.chapters_done or 0)))
+                per_stage[stage] = StageStatus.COMPLETED if chapter_pos.get(chapter.index, 0) < chapters_done else StageStatus.PENDING
+                continue
             per_stage[stage] = _derive_chapter_stage_status_from_run(
                 latest_run,
                 chapter_pos=chapter_pos.get(chapter.index, 0),
@@ -1138,11 +1146,13 @@ async def update_analysis(
     _, payloads, _ = await _load_chapter_payloads(request, db, novel_id)
     chapter_id = None
     chapter_title = ""
+    chapter_content = ""
     for payload in payloads:
         if int(payload["index"]) != chapter_idx:
             continue
         chapter_id = str(payload.get("id") or "") or None
         chapter_title = str(payload.get("title") or "")
+        chapter_content = str(payload.get("content") or "")
         break
 
     analyze_pipeline.update_analysis_artifact(
@@ -1153,6 +1163,7 @@ async def update_analysis(
         analysis,
         chapter_id=chapter_id,
         chapter_title=chapter_title,
+        chapter_text=chapter_content,
         source="manual",
     )
     stale_stages = await _mark_downstream_stages_stale(db, task.id)

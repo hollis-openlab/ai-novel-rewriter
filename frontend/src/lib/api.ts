@@ -234,6 +234,7 @@ interface StageActionPayload {
 }
 
 interface StageChapterRetryPayload {
+  force_rerun?: boolean
   provider_id?: string
   rewrite_target_chars?: number | null
   rewrite_target_added_chars?: number | null
