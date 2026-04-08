@@ -1092,6 +1092,7 @@ async def _execute_rewrite_segment_once(
     part_records: list[dict[str, Any]] = []
     part_raw_payloads: list[dict[str, Any]] = []
     part_length_warnings: list[dict[str, Any]] = []
+    partial_fallback_parts: list[int] = []
     attempts = 0
     provider_used = request.provider_type.value
 
@@ -1217,28 +1218,20 @@ async def _execute_rewrite_segment_once(
             )
 
         if not part_validation.passed and (part_validation.error_code != "REWRITE_LENGTH_OUT_OF_RANGE" or length_undershoot):
-            failure_details = _with_slice_details(part_validation.details, slice_details=slice_details)
-            failure_details["auto_split"] = {
-                "enabled": True,
-                "trigger_reason": auto_split_plan.trigger_reason,
-                "parts_total": len(auto_split_plan.parts),
-                "failed_part_index": part.index,
-                "processed_parts": len(part_records),
-                "parts": part_records + [part_record],
-            }
-            return _build_rewrite_result(
-                request,
-                status=RewriteResultStatus.FAILED,
-                original_text=original_text,
-                rewritten_text=part_rewritten,
-                attempts=attempts,
-                anchor_verified=True,
-                provider_used=provider_used,
-                error_code=part_validation.error_code or "REWRITE_VALIDATION_FAILED",
-                error_detail=_json_detail_text(part_validation.details) or part_validation.error_message,
-                provider_raw_response=completion.raw_response,
-                validation_details=failure_details,
+            # Partial fallback: use original text for this part instead of failing entirely
+            partial_fallback_parts.append(part.index)
+            part_record["status"] = "fallback"
+            part_record["fallback_reason"] = part_validation.error_code or "REWRITE_VALIDATION_FAILED"
+            rewritten_parts.append(part.source_text)
+            part_records.append(part_record)
+            part_raw_payloads.append(
+                {
+                    "part_index": part.index,
+                    "finish_reason": finish_reason,
+                    "raw_response": completion.raw_response,
+                }
             )
+            continue
 
         rewritten_parts.append(part_rewritten)
         part_records.append(part_record)
@@ -1271,6 +1264,8 @@ async def _execute_rewrite_segment_once(
     }
     if part_length_warnings:
         final_validation_details["auto_split"]["warnings"] = part_length_warnings
+    if partial_fallback_parts:
+        final_validation_details["auto_split"]["partial_fallback_parts"] = partial_fallback_parts
 
     provider_raw_response = {
         "auto_split": {
@@ -1278,9 +1273,16 @@ async def _execute_rewrite_segment_once(
         }
     }
 
+    # Determine the warning code to attach when partial fallback occurred
+    partial_fallback_error_code = "AUTO_SPLIT_PARTIAL_FALLBACK" if partial_fallback_parts else None
+
     if not final_validation.passed:
         if final_validation.error_code == "REWRITE_LENGTH_OUT_OF_RANGE":
             length_undershoot = _is_length_validation_undershoot(final_validation)
+            base_error_code = final_validation.error_code if length_undershoot else partial_fallback_error_code
+            base_error_detail = (
+                (_json_detail_text(final_validation.details) or final_validation.error_message) if length_undershoot else None
+            )
             return _build_rewrite_result(
                 request,
                 status=RewriteResultStatus.COMPLETED,
@@ -1289,10 +1291,24 @@ async def _execute_rewrite_segment_once(
                 attempts=attempts,
                 anchor_verified=True,
                 provider_used=provider_used,
-                # Keep undershoot as a validation error, but do not treat
-                # over-length output as an error.
-                error_code=final_validation.error_code if length_undershoot else None,
-                error_detail=(_json_detail_text(final_validation.details) or final_validation.error_message) if length_undershoot else None,
+                error_code=base_error_code,
+                error_detail=base_error_detail,
+                provider_raw_response=provider_raw_response,
+                validation_details=final_validation_details,
+            )
+        # When partial fallback occurred, treat the result as COMPLETED with
+        # warnings rather than FAILED — the fallback to original text is an
+        # intentional degradation, not a hard failure.
+        if partial_fallback_parts:
+            return _build_rewrite_result(
+                request,
+                status=RewriteResultStatus.COMPLETED,
+                original_text=original_text,
+                rewritten_text=merged_rewritten_text,
+                attempts=attempts,
+                anchor_verified=True,
+                provider_used=provider_used,
+                error_code=partial_fallback_error_code,
                 provider_raw_response=provider_raw_response,
                 validation_details=final_validation_details,
             )
@@ -1318,6 +1334,7 @@ async def _execute_rewrite_segment_once(
         attempts=attempts,
         anchor_verified=True,
         provider_used=provider_used,
+        error_code=partial_fallback_error_code,
         provider_raw_response=provider_raw_response,
         validation_details=final_validation_details,
     )
@@ -1505,6 +1522,12 @@ async def execute_rewrite_segment(
             )
 
         if guardrail_eval.is_hard_fail and attempt_seq < max_retry:
+            # Escalate temperature on retry to increase output diversity
+            base_temp = (request.generation or {}).get("temperature", 0.3) if isinstance(request.generation, dict) else 0.3
+            retry_temp = min(base_temp + 0.2 * attempt_seq, 1.0)
+            retry_generation = dict(request.generation) if isinstance(request.generation, dict) else {}
+            retry_generation["temperature"] = retry_temp
+            request.generation = retry_generation
             continue
 
         if guardrail_eval.is_hard_fail:
@@ -1517,7 +1540,7 @@ async def execute_rewrite_segment(
             )
             return result.model_copy(
                 update={
-                    "status": RewriteResultStatus.COMPLETED,
+                    "status": RewriteResultStatus.ROLLED_BACK,
                     "rewritten_text": rollback_text,
                     "rewritten_chars": len(rollback_text.strip()),
                     "actual_chars": len(rollback_text.strip()),

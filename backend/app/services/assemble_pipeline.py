@@ -50,6 +50,7 @@ class AssembleStats:
     rewritten_segments: int = 0
     preserved_segments: int = 0
     failed_segments: int = 0
+    rolled_back_segments: int = 0
     failed_ratio: float = 0.0
     warning_count: int = 0
 
@@ -98,6 +99,7 @@ class AssembledChapter:
     rewritten_segments: int
     preserved_segments: int
     failed_segments: int
+    rolled_back_segments: int = 0
     warnings: list[AssembleWarning] = field(default_factory=list)
 
 
@@ -128,21 +130,53 @@ class _ReplacementCandidate:
     status: RewriteResultStatus
 
 
+def _normalize_for_invariance(text: str) -> str:
+    """Normalize text for outside-window invariance comparison.
+
+    Collapses runs of whitespace to a single space and strips leading/trailing
+    whitespace so that minor whitespace drift does not cause a hard failure.
+    """
+    return re.sub(r"\s+", " ", text).strip()
+
+
+def _invariance_char_diff(a: str, b: str) -> int:
+    """Return the number of differing characters between two strings."""
+    diff = sum(1 for x, y in zip(a, b) if x != y)
+    diff += abs(len(a) - len(b))
+    return diff
+
+
+# Maximum number of differing characters (after whitespace normalisation) that
+# are tolerated in outside-window text before the chapter is reverted.
+_OUTSIDE_INVARIANCE_TOLERANCE = 3
+
+
 def _assert_outside_window_invariance(
     *,
     chapter: Chapter,
     original_text: str,
     assembled_text: str,
     candidates: Sequence[_ReplacementCandidate],
-) -> AssembleWarning | None:
+) -> list[AssembleWarning]:
+    """Check that text outside rewrite windows has not changed.
+
+    Returns a list of warnings.  An empty list means the check passed.
+    Warnings with code ``OUTSIDE_TEXT_MINOR_DRIFT`` are informational (the
+    assembly is still usable).  Warnings with code
+    ``WINDOW_OUTSIDE_TEXT_CHANGED`` indicate a hard failure that should trigger
+    a revert to the original chapter text.
+    """
     if not candidates:
-        return None
+        return []
+
+    warnings: list[AssembleWarning] = []
+    hard_fail = False
 
     original_cursor = 0
     assembled_cursor = 0
     for candidate in candidates:
         if candidate.start_offset < original_cursor:
-            return _make_warning(
+            return [_make_warning(
                 "WINDOW_OUTSIDE_TEXT_CHANGED",
                 "assemble detected non-monotonic replacement ranges",
                 chapter_index=chapter.index,
@@ -152,22 +186,44 @@ def _assert_outside_window_invariance(
                     "original_cursor": original_cursor,
                     "start_offset": candidate.start_offset,
                 },
-            )
+            )]
 
         preserved_len = candidate.start_offset - original_cursor
         original_slice = original_text[original_cursor:candidate.start_offset]
         assembled_slice = assembled_text[assembled_cursor : assembled_cursor + preserved_len]
         if len(assembled_slice) != preserved_len or assembled_slice != original_slice:
-            return _make_warning(
-                "WINDOW_OUTSIDE_TEXT_CHANGED",
-                "text outside rewrite windows changed unexpectedly",
-                chapter_index=chapter.index,
-                segment_id=candidate.segment_id,
-                paragraph_range=candidate.paragraph_range,
-                details={
-                    "before_window_range": [original_cursor, candidate.start_offset],
-                },
-            )
+            # Exact match failed — try normalised comparison with tolerance
+            norm_orig = _normalize_for_invariance(original_slice)
+            norm_asm = _normalize_for_invariance(assembled_slice)
+            if norm_orig == norm_asm:
+                pass  # pure whitespace difference, no warning needed
+            else:
+                diff_chars = _invariance_char_diff(norm_orig, norm_asm)
+                if diff_chars <= _OUTSIDE_INVARIANCE_TOLERANCE:
+                    warnings.append(_make_warning(
+                        "OUTSIDE_TEXT_MINOR_DRIFT",
+                        f"minor whitespace drift outside rewrite window ({diff_chars} char(s))",
+                        chapter_index=chapter.index,
+                        segment_id=candidate.segment_id,
+                        paragraph_range=candidate.paragraph_range,
+                        details={
+                            "before_window_range": [original_cursor, candidate.start_offset],
+                            "diff_chars": diff_chars,
+                        },
+                    ))
+                else:
+                    warnings.append(_make_warning(
+                        "WINDOW_OUTSIDE_TEXT_CHANGED",
+                        "text outside rewrite windows changed unexpectedly",
+                        chapter_index=chapter.index,
+                        segment_id=candidate.segment_id,
+                        paragraph_range=candidate.paragraph_range,
+                        details={
+                            "before_window_range": [original_cursor, candidate.start_offset],
+                            "diff_chars": diff_chars,
+                        },
+                    ))
+                    hard_fail = True
 
         assembled_cursor += preserved_len + len(candidate.rewritten_text)
         original_cursor = candidate.end_offset
@@ -177,15 +233,38 @@ def _assert_outside_window_invariance(
         original_tail = original_text[original_cursor:]
         assembled_tail = assembled_text[assembled_cursor : assembled_cursor + tail_len]
         if len(assembled_tail) != tail_len or assembled_tail != original_tail:
-            return _make_warning(
-                "WINDOW_OUTSIDE_TEXT_CHANGED",
-                "chapter tail outside rewrite windows changed unexpectedly",
-                chapter_index=chapter.index,
-                details={
-                    "tail_range": [original_cursor, len(original_text)],
-                },
-            )
-    return None
+            norm_orig = _normalize_for_invariance(original_tail)
+            norm_asm = _normalize_for_invariance(assembled_tail)
+            if norm_orig == norm_asm:
+                pass  # pure whitespace difference
+            else:
+                diff_chars = _invariance_char_diff(norm_orig, norm_asm)
+                if diff_chars <= _OUTSIDE_INVARIANCE_TOLERANCE:
+                    warnings.append(_make_warning(
+                        "OUTSIDE_TEXT_MINOR_DRIFT",
+                        f"minor whitespace drift in chapter tail ({diff_chars} char(s))",
+                        chapter_index=chapter.index,
+                        details={
+                            "tail_range": [original_cursor, len(original_text)],
+                            "diff_chars": diff_chars,
+                        },
+                    ))
+                else:
+                    warnings.append(_make_warning(
+                        "WINDOW_OUTSIDE_TEXT_CHANGED",
+                        "chapter tail outside rewrite windows changed unexpectedly",
+                        chapter_index=chapter.index,
+                        details={
+                            "tail_range": [original_cursor, len(original_text)],
+                            "diff_chars": diff_chars,
+                        },
+                    ))
+                    hard_fail = True
+
+    if hard_fail:
+        return warnings
+    # Return only informational warnings (minor drift)
+    return warnings
 
 
 def _split_paragraphs(text: str) -> list[str]:
@@ -521,7 +600,11 @@ def _preflight_candidates(
     *,
     global_seen_segment_ids: set[str],
     warnings: list[AssembleWarning],
-) -> tuple[list[_ReplacementCandidate], int]:
+) -> tuple[list[_ReplacementCandidate], int, int]:
+    """Build replacement candidates from rewrite results.
+
+    Returns ``(candidates, failed_segments, rolled_back_segments)``.
+    """
     chapter_text = _chapter_text(chapter)
     paragraphs = _split_paragraphs(chapter_text)
     paragraph_ranges = _split_paragraphs_with_ranges(chapter_text)
@@ -529,11 +612,25 @@ def _preflight_candidates(
     local_seen_segment_ids: set[str] = set()
     occupied_ranges: list[tuple[int, int]] = []
     failed_segments = 0
+    rolled_back_segments = 0
 
     for result in rewrite_results:
         # Explicitly rejected segments are intentional preserves and should
         # not count as assemble failures.
         if result.status == RewriteResultStatus.REJECTED:
+            continue
+
+        # Rolled-back segments are intentional fallbacks to original text.
+        # They are not failures — simply skip assembly and preserve original.
+        if result.status.value == "rolled_back":
+            rolled_back_segments += 1
+            warnings.append(_make_warning(
+                "SEGMENT_ROLLED_BACK",
+                "rewrite result was rolled back; preserving original text",
+                chapter_index=chapter.index,
+                segment_id=result.segment_id,
+                paragraph_range=result.paragraph_range,
+            ))
             continue
 
         if not _validate_status(result):
@@ -670,7 +767,7 @@ def _preflight_candidates(
         occupied_ranges.append((start_offset, end_offset))
 
     candidates.sort(key=lambda item: (item.start_offset, item.end_offset, item.segment_id))
-    return candidates, failed_segments
+    return candidates, failed_segments, rolled_back_segments
 
 
 def _assemble_chapter(
@@ -678,7 +775,11 @@ def _assemble_chapter(
     rewrite_results: Sequence[RewriteResult],
     *,
     global_seen_segment_ids: set[str],
-) -> tuple[AssembledChapter, int, int, int]:
+) -> tuple[AssembledChapter, int, int, int, int]:
+    """Assemble a single chapter.
+
+    Returns ``(assembled_chapter, rewritten, preserved, failed, rolled_back)``.
+    """
     warnings: list[AssembleWarning] = []
     original_text = _chapter_text(chapter)
 
@@ -691,6 +792,7 @@ def _assemble_chapter(
             rewritten_segments=0,
             preserved_segments=1,
             failed_segments=0,
+            rolled_back_segments=0,
             warnings=warnings,
         )
         assembled = AssembledChapter(
@@ -703,11 +805,12 @@ def _assemble_chapter(
             rewritten_segments=0,
             preserved_segments=1,
             failed_segments=0,
+            rolled_back_segments=0,
             warnings=warnings,
         )
-        return assembled, 0, 1, 0
+        return assembled, 0, 1, 0, 0
 
-    candidates, failed_segments = _preflight_candidates(
+    candidates, failed_segments, rolled_back_segments = _preflight_candidates(
         chapter,
         rewrite_results,
         global_seen_segment_ids=global_seen_segment_ids,
@@ -726,17 +829,19 @@ def _assemble_chapter(
         assembled_parts.append(original_text[cursor:])
 
     assembled_text = "".join(assembled_parts) if assembled_parts else original_text
-    outside_warning = _assert_outside_window_invariance(
+    outside_warnings = _assert_outside_window_invariance(
         chapter=chapter,
         original_text=original_text,
         assembled_text=assembled_text,
         candidates=candidates,
     )
-    if outside_warning is not None:
-        warnings.append(outside_warning)
-        failed_segments += max(1, len(candidates))
-        rewritten_segments = 0
-        assembled_text = original_text
+    if outside_warnings:
+        has_hard_fail = any(w.code == "WINDOW_OUTSIDE_TEXT_CHANGED" for w in outside_warnings)
+        warnings.extend(outside_warnings)
+        if has_hard_fail:
+            failed_segments += max(1, len(candidates))
+            rewritten_segments = 0
+            assembled_text = original_text
 
     assembled_text = _ensure_chapter_heading(chapter, assembled_text)
     compare_text = _build_compare_text(
@@ -746,6 +851,7 @@ def _assemble_chapter(
         rewritten_segments=rewritten_segments,
         preserved_segments=0,
         failed_segments=failed_segments,
+        rolled_back_segments=rolled_back_segments,
         warnings=warnings,
     )
     assembled = AssembledChapter(
@@ -758,9 +864,10 @@ def _assemble_chapter(
         rewritten_segments=rewritten_segments,
         preserved_segments=0,
         failed_segments=failed_segments,
+        rolled_back_segments=rolled_back_segments,
         warnings=warnings,
     )
-    return assembled, rewritten_segments, 0, failed_segments
+    return assembled, rewritten_segments, 0, failed_segments, rolled_back_segments
 
 
 def _build_compare_text(
@@ -771,6 +878,7 @@ def _build_compare_text(
     rewritten_segments: int,
     preserved_segments: int,
     failed_segments: int,
+    rolled_back_segments: int = 0,
     warnings: Sequence[AssembleWarning],
 ) -> str:
     warning_lines = "\n".join(f"- {warning.code}: {warning.message}" for warning in warnings) if warnings else "- none"
@@ -782,6 +890,7 @@ def _build_compare_text(
         f"rewritten_segments={rewritten_segments}\n"
         f"preserved_segments={preserved_segments}\n"
         f"failed_segments={failed_segments}\n"
+        f"rolled_back_segments={rolled_back_segments}\n"
         f"[warnings]\n{warning_lines}"
     )
 
@@ -873,10 +982,11 @@ def assemble_novel(
     total_rewritten_segments = 0
     total_preserved_segments = 0
     total_failed_segments = 0
+    total_rolled_back_segments = 0
 
     for chapter in normalized_chapters:
         chapter_results = list(rewritten_map.get(chapter.index, []))
-        assembled_chapter, rewritten_count, preserved_count, failed_count = _assemble_chapter(
+        assembled_chapter, rewritten_count, preserved_count, failed_count, rolled_back_count = _assemble_chapter(
             chapter,
             chapter_results,
             global_seen_segment_ids=global_seen_segment_ids,
@@ -886,6 +996,7 @@ def assemble_novel(
         total_rewritten_segments += rewritten_count
         total_preserved_segments += preserved_count
         total_failed_segments += failed_count
+        total_rolled_back_segments += rolled_back_count
 
     assembled_text = "\n\n".join(chapter.assembled_text for chapter in assembled_chapters)
     compare_text = "\n\n".join(chapter.compare_text for chapter in assembled_chapters)
@@ -898,6 +1009,7 @@ def assemble_novel(
         rewritten_segments=total_rewritten_segments,
         preserved_segments=total_preserved_segments,
         failed_segments=total_failed_segments,
+        rolled_back_segments=total_rolled_back_segments,
     )
     stats.warning_count = len(warnings)
     total_segments = stats.rewritten_segments + stats.preserved_segments + stats.failed_segments

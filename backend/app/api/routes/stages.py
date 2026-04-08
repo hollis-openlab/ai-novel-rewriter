@@ -53,7 +53,7 @@ from backend.app.services.analyze_pipeline import (
 from backend.app.services.assemble_pipeline import assemble_results_to_dict, assemble_novel
 from backend.app.services.config_store import load_snapshot
 from backend.app.services.marking import build_rewrite_plan, write_mark_artifacts
-from backend.app.services.rewrite_pipeline import RewriteSegmentRequest, execute_rewrite_segment, execute_rewrite_segments_sequential, extract_segment_source_text
+from backend.app.services.rewrite_pipeline import RewriteSegmentRequest, execute_rewrite_segment, extract_segment_source_text
 from backend.app.services.worker_pool import WorkerPool
 from backend.app.services.splitting import load_split_rules_state, make_split_preview, validate_preview_token
 
@@ -991,6 +991,7 @@ def _rewrite_results_cover_chapter_plan(chapter_plan: Any | None, results: list[
         RewriteResultStatus.ACCEPTED,
         RewriteResultStatus.ACCEPTED_EDITED,
         RewriteResultStatus.REJECTED,
+        RewriteResultStatus.ROLLED_BACK,
     }
     if any(item.status not in terminal_statuses for item in results):
         return False
@@ -1106,6 +1107,7 @@ def _split_rewrite_segments_for_execution(
         RewriteResultStatus.ACCEPTED,
         RewriteResultStatus.ACCEPTED_EDITED,
         RewriteResultStatus.REJECTED,
+        RewriteResultStatus.ROLLED_BACK,
     }
     terminal_results = [item for item in existing_results if item.status in terminal_statuses]
     pending_segments: list[Any] = []
@@ -1599,9 +1601,7 @@ async def _retry_rewrite_stage_chapter(
                     request_tokens=request_tokens,
                 )
 
-            executed_results = list(await execute_rewrite_segments_sequential(
-                segment_requests, submit=_submit,
-            ))
+            executed_results = list(await asyncio.gather(*(_submit(item) for item in segment_requests)))
         else:
             executed_results = []
 
@@ -2435,6 +2435,7 @@ def _rewrite_payload_status_fields(segments: list[RewriteResult]) -> dict[str, A
         RewriteResultStatus.ACCEPTED,
         RewriteResultStatus.ACCEPTED_EDITED,
         RewriteResultStatus.REJECTED,
+        RewriteResultStatus.ROLLED_BACK,
     }
     statuses = {item.status for item in segments}
     if RewriteResultStatus.FAILED in statuses:
@@ -2701,9 +2702,7 @@ async def _run_rewrite_stage(
             )
 
         try:
-            results = list(await execute_rewrite_segments_sequential(
-                segment_requests, submit=_submit,
-            ))
+            results = list(await asyncio.gather(*(_submit(item) for item in segment_requests)))
         except AppError as exc:
             await _upsert_chapter_state(
                 db,

@@ -141,8 +141,9 @@ def test_build_rewrite_prompt_bundle_injects_context() -> None:
     assert "主角" in bundle.user_prompt
     assert "rewrite" in bundle.user_prompt
     assert "第一段战斗动作很快" in bundle.user_prompt
-    assert "可改写窗口正文" in bundle.user_prompt
-    assert "只读，不可改写" in bundle.user_prompt
+    assert "<rewrite_target>" in bundle.user_prompt
+    assert "<context_before>" in bundle.user_prompt
+    assert "<context_after>" in bundle.user_prompt
     assert bundle.context["preceding_text"] == preceding_text[-2000:]
     assert bundle.context["following_text"] == following_text[:2000]
     assert bundle.context["window_text"].startswith("第一段战斗动作很快")
@@ -333,7 +334,7 @@ def test_execute_rewrite_segment_keeps_output_when_length_out_of_range() -> None
 
         result = await execute_rewrite_segment(request, llm_complete=fake_complete)
         expected_original = "\n\n".join(chapter.content.split("\n\n")[0:2])
-        assert result.status == RewriteResultStatus.COMPLETED
+        assert result.status == RewriteResultStatus.ROLLED_BACK
         assert result.rewritten_text == expected_original
         assert result.has_warnings is True
         assert "REWRITE_LENGTH_SEVERE_OUTLIER" in (result.warning_codes or [])
@@ -583,14 +584,16 @@ def test_execute_rewrite_segment_auto_split_fails_when_part_output_too_short() -
         )
 
         result = await execute_rewrite_segment(rewrite_request, llm_complete=fake_complete)
-        assert result.status == RewriteResultStatus.COMPLETED
+        # All parts produce extremely short output, so all fall back to
+        # original text.  The guardrail then detects the merged text is
+        # identical to the original and rolls back after exhausting retries.
+        assert result.status == RewriteResultStatus.ROLLED_BACK
         assert result.has_warnings is True
-        assert "REWRITE_LENGTH_SEVERE_OUTLIER" in (result.warning_codes or [])
-        assert len(result.window_attempts) == 2
+        assert "AUTO_SPLIT_PARTIAL_FALLBACK" in (result.warning_codes or [])
         assert result.validation_details is not None
         auto_split = result.validation_details.get("auto_split")
         assert isinstance(auto_split, dict)
-        assert int(auto_split["failed_part_index"]) == 1
+        assert len(auto_split.get("partial_fallback_parts", [])) >= 1
 
     asyncio.run(_run())
 

@@ -54,6 +54,7 @@ class RewriteResultStatus(StrEnum):
     ACCEPTED_EDITED = "accepted_edited"
     REJECTED = "rejected"
     FAILED = "failed"
+    ROLLED_BACK = "rolled_back"
 
 
 class RewriteReviewAction(StrEnum):

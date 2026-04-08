@@ -207,6 +207,7 @@ def _rewrite_stage_status_from_results(results: list[RewriteResult]) -> StageSta
         RewriteResultStatus.ACCEPTED,
         RewriteResultStatus.ACCEPTED_EDITED,
         RewriteResultStatus.REJECTED,
+        RewriteResultStatus.ROLLED_BACK,
     }
     if statuses.issubset(terminal):
         return StageStatus.COMPLETED
@@ -396,6 +397,7 @@ def _rewrite_payload_status_fields(segments: list[RewriteResult]) -> dict[str, A
         RewriteResultStatus.ACCEPTED,
         RewriteResultStatus.ACCEPTED_EDITED,
         RewriteResultStatus.REJECTED,
+        RewriteResultStatus.ROLLED_BACK,
     }
     statuses = {item.status for item in segments}
     if RewriteResultStatus.FAILED in statuses:

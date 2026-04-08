@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import math
 import re
 from dataclasses import dataclass
@@ -25,6 +26,8 @@ from backend.app.models.core import (
     SentenceSpan,
 )
 from backend.app.services.config_store import RewriteRule
+
+logger = logging.getLogger(__name__)
 
 PARAGRAPH_SPLIT_RE = re.compile(r"(?:\r?\n\s*){2,}")
 DEFAULT_CONTEXT_WINDOW_SIZE = 1
@@ -577,14 +580,35 @@ def build_anchor(
 
 
 def _select_rewrite_rule(scene_type: str, rewrite_rules: Sequence[RewriteRule]) -> RewriteRule | None:
-    candidates = [
+    normalized = _normalize_scene_type(scene_type)
+
+    # 1. Exact match (case-insensitive)
+    exact_candidates = [
         rule
         for rule in rewrite_rules
-        if rule.enabled and _normalize_scene_type(rule.scene_type) == _normalize_scene_type(scene_type)
+        if rule.enabled and _normalize_scene_type(rule.scene_type) == normalized
     ]
-    if not candidates:
-        return None
-    return sorted(candidates, key=lambda rule: (rule.priority, rule.scene_type, rule.id))[0]
+    if exact_candidates:
+        return sorted(exact_candidates, key=lambda rule: (rule.priority, rule.scene_type, rule.id))[0]
+
+    # 2. Fuzzy fallback: substring containment
+    fuzzy_candidates = [
+        rule
+        for rule in rewrite_rules
+        if rule.enabled and (
+            _normalize_scene_type(rule.scene_type) in normalized
+            or normalized in _normalize_scene_type(rule.scene_type)
+        )
+    ]
+    if fuzzy_candidates:
+        winner = sorted(fuzzy_candidates, key=lambda rule: (rule.priority, rule.scene_type, rule.id))[0]
+        logger.info(
+            "Fuzzy scene_type match: '%s' matched rule '%s' via substring containment",
+            scene_type, winner.scene_type,
+        )
+        return winner
+
+    return None
 
 
 def _is_rewrite_applicable(scene: object, rule: RewriteRule) -> bool:
@@ -1214,6 +1238,12 @@ def build_chapter_mark_plan(
         if segment is not None:
             segments.append(segment)
 
+    deduped_segments, dropped_count = _drop_overlapping_segments(segments)
+    if dropped_count:
+        logger.warning(
+            "Chapter %d: dropped %d overlapping segment(s)", chapter.index, dropped_count,
+        )
+
     return RewriteChapterPlan(
         chapter_index=chapter.index,
         sentence_spans=chapter_sentence_index.sentence_spans,
@@ -1221,7 +1251,7 @@ def build_chapter_mark_plan(
         window_planner_version=WINDOW_PLANNER_VERSION,
         plan_version=resolved_plan_version,
         source_fingerprint=chapter_fingerprint,
-        segments=_drop_overlapping_segments(segments),
+        segments=deduped_segments,
     )
 
 
@@ -1306,8 +1336,9 @@ def _sorted_segments(segments: Sequence[RewriteSegment]) -> list[RewriteSegment]
     )
 
 
-def _drop_overlapping_segments(segments: Sequence[RewriteSegment]) -> list[RewriteSegment]:
+def _drop_overlapping_segments(segments: Sequence[RewriteSegment]) -> tuple[list[RewriteSegment], int]:
     selected: list[RewriteSegment] = []
+    dropped_count = 0
     for segment in _sorted_segments(segments):
         char_range = segment.char_offset_range
         if selected:
@@ -1317,14 +1348,26 @@ def _drop_overlapping_segments(segments: Sequence[RewriteSegment]) -> list[Rewri
                 if char_range[0] < prev_char_range[1]:
                     # Keep first hit to avoid hard failures on noisy/duplicate
                     # scene detection or aggressive context expansion.
+                    logger.warning(
+                        "Dropping overlapping segment %s (scene=%s, range=%s) — overlaps with %s (scene=%s, range=%s)",
+                        segment.segment_id[:12], segment.scene_type, segment.char_offset_range,
+                        prev.segment_id[:12], prev.scene_type, prev.char_offset_range,
+                    )
+                    dropped_count += 1
                     continue
             else:
                 start, end = segment.paragraph_range
                 _, prev_end = prev.paragraph_range
                 if start <= prev_end:
+                    logger.warning(
+                        "Dropping overlapping segment %s (scene=%s, range=%s) — overlaps with %s (scene=%s, range=%s)",
+                        segment.segment_id[:12], segment.scene_type, segment.char_offset_range,
+                        prev.segment_id[:12], prev.scene_type, prev.char_offset_range,
+                    )
+                    dropped_count += 1
                     continue
         selected.append(segment)
-    return selected
+    return selected, dropped_count
 
 
 def merge_chapter_segments(
