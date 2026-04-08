@@ -1664,6 +1664,10 @@ async def execute_rewrite_segments_sequential(
         if working_content is None:
             working_content = seg_req.chapter.content
 
+        # Save original offsets before drift adjustment — assembly needs them
+        # to locate segments in the original (un-rewritten) chapter text.
+        original_segment = seg_req.segment
+
         if drift != 0:
             updated_chapter = seg_req.chapter.model_copy(update={"content": working_content})
             adjusted_segment = _apply_drift_to_segment(seg_req.segment, drift)
@@ -1679,6 +1683,17 @@ async def execute_rewrite_segments_sequential(
             result = await execute_rewrite_segment(
                 seg_req, llm_complete=llm_complete, transport=transport,
             )
+
+        # Restore original (un-drifted) offsets on the result so that
+        # downstream consumers (assembly) can locate the segment in the
+        # original chapter content.
+        if drift != 0:
+            result = result.model_copy(update={
+                "char_offset_range": original_segment.char_offset_range,
+                "paragraph_range": original_segment.paragraph_range,
+                "rewrite_windows": list(original_segment.rewrite_windows or []),
+            })
+
         results.append(result)
 
         if (
