@@ -34,7 +34,7 @@ from backend.app.services.marking import build_anchor, build_chapter_mark_plan
 
 PARAGRAPH_SPLIT_RE = re.compile(r"(?:\r?\n\s*){2,}")
 DEFAULT_CONTEXT_WINDOW_SIZE = 1
-DEFAULT_CONTEXT_CHARS = 300
+DEFAULT_CONTEXT_CHARS = 2000
 DEFAULT_AUTO_SPLIT_TRIGGER_CHARS = 6_000
 DEFAULT_AUTO_SPLIT_MIN_PART_CHARS = 700
 DEFAULT_AUTO_SPLIT_MAX_PART_CHARS = 2_800
@@ -97,6 +97,7 @@ class RewriteSegmentRequest:
     window_mode_enabled: bool = True
     window_guardrail_enabled: bool = True
     window_audit_enabled: bool = True
+    skip_anchor_validation: bool = False
 
 
 @dataclass(slots=True)
@@ -955,20 +956,21 @@ async def _execute_rewrite_segment_once(
             error_code=exc.code.value,
             error_detail=_json_detail_text(exc.details) or exc.message,
         )
-    anchor_validation = validate_rewrite_anchor(request.chapter, request.segment, context_window_size=request.context_window_size)
-    if not anchor_validation.passed:
-        return _build_rewrite_result(
-            request,
-            status=RewriteResultStatus.FAILED,
-            original_text=original_text,
-            rewritten_text="",
-            attempts=0,
-            anchor_verified=False,
-            provider_used=request.provider_type.value,
-            error_code=anchor_validation.error_code or ErrorCode.ANCHOR_MISMATCH.value,
-            error_detail=_json_detail_text(anchor_validation.details) or anchor_validation.error_message,
-            validation_details=_with_slice_details(anchor_validation.details, slice_details=slice_details),
-        )
+    if not request.skip_anchor_validation:
+        anchor_validation = validate_rewrite_anchor(request.chapter, request.segment, context_window_size=request.context_window_size)
+        if not anchor_validation.passed:
+            return _build_rewrite_result(
+                request,
+                status=RewriteResultStatus.FAILED,
+                original_text=original_text,
+                rewritten_text="",
+                attempts=0,
+                anchor_verified=False,
+                provider_used=request.provider_type.value,
+                error_code=anchor_validation.error_code or ErrorCode.ANCHOR_MISMATCH.value,
+                error_detail=_json_detail_text(anchor_validation.details) or anchor_validation.error_message,
+                validation_details=_with_slice_details(anchor_validation.details, slice_details=slice_details),
+            )
 
     resolved_generation = build_generation_params(provider_defaults=request.generation)
     auto_split_plan = _build_auto_split_plan(
@@ -1601,6 +1603,99 @@ def build_rewrite_segment_requests(chapter_request: RewriteChapterRequest) -> li
     ]
 
 
+def _replace_segment_in_content(
+    content: str,
+    segment: RewriteSegment,
+    rewritten_text: str,
+) -> str:
+    """Replace a segment's text with *rewritten_text* in *content*.
+
+    The segment's ``char_offset_range`` (if present) must already reflect any
+    prior drift adjustments so that it points to the correct slice of *content*.
+    """
+    char_range = segment.char_offset_range
+    if char_range is not None:
+        start, end = char_range
+        return content[:start] + rewritten_text + content[end:]
+
+    paragraphs = _split_paragraphs(content)
+    p_start, p_end = segment.paragraph_range
+    before = "\n\n".join(paragraphs[: p_start - 1])
+    after = "\n\n".join(paragraphs[p_end:])
+    parts = [p for p in (before, rewritten_text, after) if p]
+    return "\n\n".join(parts)
+
+
+def _apply_drift_to_segment(segment: RewriteSegment, drift: int) -> RewriteSegment:
+    """Return a copy of the segment with char_offset_range shifted by *drift*."""
+    if drift == 0 or segment.char_offset_range is None:
+        return segment
+    start, end = segment.char_offset_range
+    adjusted_windows = [
+        w.model_copy(update={
+            "start_offset": w.start_offset + drift,
+            "end_offset": w.end_offset + drift,
+        })
+        for w in segment.rewrite_windows
+    ] if segment.rewrite_windows else []
+    return segment.model_copy(update={
+        "char_offset_range": (start + drift, end + drift),
+        "rewrite_windows": adjusted_windows,
+    })
+
+
+async def execute_rewrite_segments_sequential(
+    segment_requests: Sequence[RewriteSegmentRequest],
+    *,
+    submit: SubmitFn | None = None,
+    llm_complete: Callable[..., Awaitable[CompletionResponse]] = default_complete,
+    transport: Any | None = None,
+) -> list[RewriteResult]:
+    """Execute segment requests sequentially, feeding each rewrite result as
+    context for subsequent segments (rolling context)."""
+    if not segment_requests:
+        return []
+
+    results: list[RewriteResult] = []
+    drift = 0
+    working_content: str | None = None
+
+    for seg_req in segment_requests:
+        if working_content is None:
+            working_content = seg_req.chapter.content
+
+        if drift != 0:
+            updated_chapter = seg_req.chapter.model_copy(update={"content": working_content})
+            adjusted_segment = _apply_drift_to_segment(seg_req.segment, drift)
+            seg_req.chapter = updated_chapter
+            seg_req.segment = adjusted_segment
+            seg_req.skip_anchor_validation = True
+        else:
+            seg_req.chapter = seg_req.chapter.model_copy(update={"content": working_content})
+
+        if submit is not None:
+            result = await submit(seg_req)
+        else:
+            result = await execute_rewrite_segment(
+                seg_req, llm_complete=llm_complete, transport=transport,
+            )
+        results.append(result)
+
+        if (
+            result.status in {RewriteResultStatus.COMPLETED, RewriteResultStatus.ACCEPTED}
+            and result.rewritten_text
+            and result.original_text
+        ):
+            working_content = _replace_segment_in_content(
+                working_content,
+                seg_req.segment,
+                result.rewritten_text,
+            )
+            drift += len(result.rewritten_text) - len(result.original_text)
+
+    return results
+
+
 async def execute_rewrite_chapter(
     chapter_request: RewriteChapterRequest,
     *,
@@ -1608,23 +1703,11 @@ async def execute_rewrite_chapter(
     llm_complete: Callable[..., Awaitable[CompletionResponse]] = default_complete,
     transport: Any | None = None,
 ) -> list[RewriteResult]:
-    """Execute one chapter sequentially and its segments in parallel."""
+    """Execute one chapter's segments sequentially with rolling context."""
 
     segment_requests = build_rewrite_segment_requests(chapter_request)
-    if not segment_requests:
-        return []
-
-    if submit is not None:
-        return list(
-            await asyncio.gather(
-                *(submit(item) for item in segment_requests),
-            )
-        )
-
-    return list(
-        await asyncio.gather(
-            *(execute_rewrite_segment(item, llm_complete=llm_complete, transport=transport) for item in segment_requests),
-        )
+    return await execute_rewrite_segments_sequential(
+        segment_requests, submit=submit, llm_complete=llm_complete, transport=transport,
     )
 
 

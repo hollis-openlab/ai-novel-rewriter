@@ -122,8 +122,8 @@ def test_build_rewrite_prompt_bundle_injects_context() -> None:
     chapter = _chapter()
     analysis = _analysis()
     segment = _segment(chapter, (1, 2))
-    preceding_text = "前文" * 220
-    following_text = "后文" * 220
+    preceding_text = "前文" * 1500
+    following_text = "后文" * 1500
 
     bundle = build_rewrite_prompt_bundle(
         chapter,
@@ -143,8 +143,8 @@ def test_build_rewrite_prompt_bundle_injects_context() -> None:
     assert "第一段战斗动作很快" in bundle.user_prompt
     assert "可改写窗口正文" in bundle.user_prompt
     assert "只读，不可改写" in bundle.user_prompt
-    assert bundle.context["preceding_text"] == preceding_text[-300:]
-    assert bundle.context["following_text"] == following_text[:300]
+    assert bundle.context["preceding_text"] == preceding_text[-2000:]
+    assert bundle.context["following_text"] == following_text[:2000]
     assert bundle.context["window_text"].startswith("第一段战斗动作很快")
     assert bundle.context["rewrite_mode"] == "rewrite"
     assert bundle.context["segment_text"].startswith("第一段战斗动作很快")
@@ -595,7 +595,7 @@ def test_execute_rewrite_segment_auto_split_fails_when_part_output_too_short() -
     asyncio.run(_run())
 
 
-def test_execute_rewrite_chapter_and_batch_keep_chapter_order() -> None:
+def test_execute_rewrite_chapter_sequential_and_batch_keep_chapter_order() -> None:
     async def _run() -> None:
         chapter = _chapter()
         chapter_two_content = "\n\n".join(["第二章第一段继续战斗。", "第二章第二段收束。"])
@@ -661,14 +661,10 @@ def test_execute_rewrite_chapter_and_batch_keep_chapter_order() -> None:
             generation={"temperature": 0.2},
         )
 
-        started: list[tuple[int, str]] = []
-        release = asyncio.Event()
+        execution_order: list[tuple[int, str]] = []
 
         async def fake_submit(item: RewriteSegmentRequest) -> RewriteResult:
-            started.append((item.chapter.index, item.segment.segment_id))
-            if len(started) >= 2:
-                release.set()
-            await release.wait()
+            execution_order.append((item.chapter.index, item.segment.segment_id))
             return RewriteResult(
                 segment_id=item.segment.segment_id,
                 chapter_index=item.chapter.index,
@@ -682,23 +678,21 @@ def test_execute_rewrite_chapter_and_batch_keep_chapter_order() -> None:
                 status=RewriteResultStatus.COMPLETED,
                 attempts=1,
                 provider_used=item.provider_type.value,
-        )
+            )
 
-        chapter_task = asyncio.create_task(execute_rewrite_chapter(chapter_request, submit=fake_submit))
-        await asyncio.sleep(0.05)
-        assert len(started) >= 1
-        release.set()
-        await asyncio.wait_for(release.wait(), timeout=1)
-        first_chapter_started = len(started)
-        assert first_chapter_started >= 1
-        release.set()
-        chapter_results = await chapter_task
-        assert [item.chapter_index for item in chapter_results] == [1] * first_chapter_started
+        # Segments within a chapter execute sequentially
+        chapter_results = await execute_rewrite_chapter(chapter_request, submit=fake_submit)
+        assert len(chapter_results) >= 1
+        assert all(item.chapter_index == 1 for item in chapter_results)
+        # Verify sequential: each segment started only after previous completed
+        for i in range(1, len(execution_order)):
+            assert execution_order[i - 1][0] <= execution_order[i][0]
 
-        started.clear()
+        execution_order.clear()
         results = await batch_rewrite_chapters([chapter_two_request, chapter_request], submit=fake_submit)
-        assert started and started[0][0] == 1
-        assert started[-1][0] == 2
+        # batch_rewrite_chapters processes chapter 1 before chapter 2
+        assert execution_order and execution_order[0][0] == 1
+        assert execution_order[-1][0] == 2
         chapter_indexes = [item.chapter_index for item in results]
         assert chapter_indexes == sorted(chapter_indexes)
 

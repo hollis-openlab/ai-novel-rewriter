@@ -53,7 +53,7 @@ from backend.app.services.analyze_pipeline import (
 from backend.app.services.assemble_pipeline import assemble_results_to_dict, assemble_novel
 from backend.app.services.config_store import load_snapshot
 from backend.app.services.marking import build_rewrite_plan, write_mark_artifacts
-from backend.app.services.rewrite_pipeline import RewriteSegmentRequest, execute_rewrite_segment, extract_segment_source_text
+from backend.app.services.rewrite_pipeline import RewriteSegmentRequest, execute_rewrite_segment, execute_rewrite_segments_sequential, extract_segment_source_text
 from backend.app.services.worker_pool import WorkerPool
 from backend.app.services.splitting import load_split_rules_state, make_split_preview, validate_preview_token
 
@@ -1599,7 +1599,9 @@ async def _retry_rewrite_stage_chapter(
                     request_tokens=request_tokens,
                 )
 
-            executed_results = list(await asyncio.gather(*(_submit(item) for item in segment_requests)))
+            executed_results = list(await execute_rewrite_segments_sequential(
+                segment_requests, submit=_submit,
+            ))
         else:
             executed_results = []
 
@@ -2699,7 +2701,9 @@ async def _run_rewrite_stage(
             )
 
         try:
-            results = list(await asyncio.gather(*(_submit(item) for item in segment_requests)))
+            results = list(await execute_rewrite_segments_sequential(
+                segment_requests, submit=_submit,
+            ))
         except AppError as exc:
             await _upsert_chapter_state(
                 db,
