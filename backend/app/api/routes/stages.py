@@ -388,6 +388,30 @@ async def _latest_stage_run(db: AsyncSession, task_id: str, stage: StageName) ->
     ).scalars().first()
 
 
+async def _mark_downstream_stale(db: AsyncSession, task_id: str, downstream: tuple[str, ...] = ("mark", "rewrite", "assemble")) -> None:
+    """Mark the latest completed/failed run of each downstream stage as STALE.
+
+    Called when an upstream stage (e.g. analyze) begins re-running so the UI
+    shows that downstream results are based on outdated data.
+    """
+    for stage_name in downstream:
+        run = (
+            await db.execute(
+                select(StageRun)
+                .where(
+                    StageRun.task_id == task_id,
+                    StageRun.stage == stage_name,
+                    StageRun.status.in_([StageStatus.COMPLETED.value, StageStatus.FAILED.value]),
+                )
+                .order_by(StageRun.run_seq.desc())
+                .limit(1)
+            )
+        ).scalars().first()
+        if run is not None:
+            run.status = StageStatus.STALE.value
+    await db.commit()
+
+
 async def _running_stage_run(db: AsyncSession, task_id: str, stage: StageName) -> StageRun | None:
     return (
         await db.execute(
@@ -805,6 +829,11 @@ async def _run_analyze_stage(
         default_status=ChapterStateStatus.PENDING,
     )
     await db.commit()
+
+    # Analyze is re-running — mark downstream stages as stale so the UI
+    # reflects that their results are based on outdated analysis.
+    await _mark_downstream_stale(db, active_task.id)
+
     config_snapshot = await _load_config_snapshot(db)
     provider = await _resolve_provider_for_execution(db, provider_id)
 
@@ -1248,6 +1277,10 @@ async def _retry_analyze_stage_chapter(
         completed_at=None,
     )
     await db.commit()
+
+    # Single-chapter analyze retry — mark downstream stages as stale.
+    await _mark_downstream_stale(db, active_task.id)
+
     await db.refresh(latest_analyze)
     await _sync_stage_run_artifacts(
         request,

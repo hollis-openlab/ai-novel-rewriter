@@ -740,10 +740,34 @@ async def _persist_chapters(
 
 
 async def _mark_stage_runs_stale(db: AsyncSession, task_id: str, stage_names: tuple[str, ...]) -> list[str]:
-    # Product decision: downstream stage statuses are no longer marked "stale".
-    # We preserve existing stage run statuses and rely on explicit reruns instead.
-    _ = (db, task_id, stage_names)
-    return []
+    """Mark the latest completed/failed run for each named stage as STALE.
+
+    This signals to the frontend that the stage results are based on outdated
+    upstream data and need to be re-run.  Returns the list of stage names that
+    were actually marked stale.
+    """
+    from backend.app.db.models import StageRun, StageRunStatus
+
+    marked: list[str] = []
+    for stage_name in stage_names:
+        run = (
+            await db.execute(
+                select(StageRun)
+                .where(
+                    StageRun.task_id == task_id,
+                    StageRun.stage == stage_name,
+                    StageRun.status.in_([StageRunStatus.COMPLETED.value, StageRunStatus.FAILED.value]),
+                )
+                .order_by(StageRun.run_seq.desc())
+                .limit(1)
+            )
+        ).scalars().first()
+        if run is not None:
+            run.status = StageRunStatus.STALE.value
+            marked.append(stage_name)
+    if marked:
+        await db.commit()
+    return marked
 
 
 async def _mark_downstream_stages_stale(db: AsyncSession, task_id: str) -> list[str]:
