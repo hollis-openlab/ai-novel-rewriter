@@ -62,17 +62,9 @@ def _normalize_stage_status(
     completed_at: object | None = None,
 ) -> StageStatus:
     status = raw if isinstance(raw, StageStatus) else StageStatus(str(raw))
-    if status != StageStatus.STALE:
-        return status
-    total = max(0, int(chapters_total or 0))
-    done = max(0, min(total, int(chapters_done or 0)))
-    if total > 0:
-        return StageStatus.COMPLETED if done >= total else StageStatus.PAUSED
-    if done > 0:
-        return StageStatus.COMPLETED
-    if completed_at is not None:
-        return StageStatus.PAUSED
-    return StageStatus.PENDING
+    if status == StageStatus.STALE:
+        return status  # Return STALE as-is so the frontend can display it
+    return status
 
 
 REWRITE_ACCEPTED_STATUSES = {"accepted", "completed", "accepted_edited"}

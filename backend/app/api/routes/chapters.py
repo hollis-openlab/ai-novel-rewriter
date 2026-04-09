@@ -180,17 +180,9 @@ def _normalize_stage_status(
     completed_at: object | None = None,
 ) -> StageStatus:
     status = raw if isinstance(raw, StageStatus) else StageStatus(str(raw))
-    if status != StageStatus.STALE:
-        return status
-    total = max(0, int(chapters_total or 0))
-    done = max(0, min(total, int(chapters_done or 0)))
-    if total > 0:
-        return StageStatus.COMPLETED if done >= total else StageStatus.PAUSED
-    if done > 0:
-        return StageStatus.COMPLETED
-    if completed_at is not None:
-        return StageStatus.PAUSED
-    return StageStatus.PENDING
+    if status == StageStatus.STALE:
+        return status  # Return STALE as-is so the frontend can display it
+    return status
 
 
 def _rewrite_stage_status_from_results(results: list[RewriteResult]) -> StageStatus:
@@ -207,7 +199,6 @@ def _rewrite_stage_status_from_results(results: list[RewriteResult]) -> StageSta
         RewriteResultStatus.ACCEPTED,
         RewriteResultStatus.ACCEPTED_EDITED,
         RewriteResultStatus.REJECTED,
-        RewriteResultStatus.ROLLED_BACK,
     }
     if statuses.issubset(terminal):
         return StageStatus.COMPLETED
@@ -397,7 +388,6 @@ def _rewrite_payload_status_fields(segments: list[RewriteResult]) -> dict[str, A
         RewriteResultStatus.ACCEPTED,
         RewriteResultStatus.ACCEPTED_EDITED,
         RewriteResultStatus.REJECTED,
-        RewriteResultStatus.ROLLED_BACK,
     }
     statuses = {item.status for item in segments}
     if RewriteResultStatus.FAILED in statuses:
@@ -740,34 +730,10 @@ async def _persist_chapters(
 
 
 async def _mark_stage_runs_stale(db: AsyncSession, task_id: str, stage_names: tuple[str, ...]) -> list[str]:
-    """Mark the latest completed/failed run for each named stage as STALE.
-
-    This signals to the frontend that the stage results are based on outdated
-    upstream data and need to be re-run.  Returns the list of stage names that
-    were actually marked stale.
-    """
-    from backend.app.db.models import StageRun, StageRunStatus
-
-    marked: list[str] = []
-    for stage_name in stage_names:
-        run = (
-            await db.execute(
-                select(StageRun)
-                .where(
-                    StageRun.task_id == task_id,
-                    StageRun.stage == stage_name,
-                    StageRun.status.in_([StageRunStatus.COMPLETED.value, StageRunStatus.FAILED.value]),
-                )
-                .order_by(StageRun.run_seq.desc())
-                .limit(1)
-            )
-        ).scalars().first()
-        if run is not None:
-            run.status = StageRunStatus.STALE.value
-            marked.append(stage_name)
-    if marked:
-        await db.commit()
-    return marked
+    # Product decision: downstream stage statuses are no longer marked "stale".
+    # We preserve existing stage run statuses and rely on explicit reruns instead.
+    _ = (db, task_id, stage_names)
+    return []
 
 
 async def _mark_downstream_stages_stale(db: AsyncSession, task_id: str) -> list[str]:

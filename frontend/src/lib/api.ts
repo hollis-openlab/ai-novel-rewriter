@@ -131,7 +131,14 @@ async function requestJson<T>(response: Response): Promise<T> {
     return undefined as T
   }
 
-  return JSON.parse(text) as T
+  try {
+    return JSON.parse(text) as T
+  } catch {
+    throw new ApiError(
+      `Invalid JSON response: ${text.slice(0, 200)}`,
+      response.status
+    )
+  }
 }
 
 async function requestDownload(

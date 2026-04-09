@@ -68,17 +68,9 @@ def _normalize_stage_status(
     completed_at: object | None = None,
 ) -> StageStatus:
     status = raw if isinstance(raw, StageStatus) else StageStatus(str(raw))
-    if status != StageStatus.STALE:
-        return status
-    total = max(0, int(chapters_total or 0))
-    done = max(0, min(total, int(chapters_done or 0)))
-    if total > 0:
-        return StageStatus.COMPLETED if done >= total else StageStatus.PAUSED
-    if done > 0:
-        return StageStatus.COMPLETED
-    if completed_at is not None:
-        return StageStatus.PAUSED
-    return StageStatus.PENDING
+    if status == StageStatus.STALE:
+        return status  # Return STALE as-is so the frontend can display it
+    return status
 
 
 def _to_run_info(stage_run: StageRun, *, artifact_path: str | None = None, is_latest: bool = True) -> StageRunInfo:
@@ -386,30 +378,6 @@ async def _latest_stage_run(db: AsyncSession, task_id: str, stage: StageName) ->
             .limit(1)
         )
     ).scalars().first()
-
-
-async def _mark_downstream_stale(db: AsyncSession, task_id: str, downstream: tuple[str, ...] = ("mark", "rewrite", "assemble")) -> None:
-    """Mark the latest completed/failed run of each downstream stage as STALE.
-
-    Called when an upstream stage (e.g. analyze) begins re-running so the UI
-    shows that downstream results are based on outdated data.
-    """
-    for stage_name in downstream:
-        run = (
-            await db.execute(
-                select(StageRun)
-                .where(
-                    StageRun.task_id == task_id,
-                    StageRun.stage == stage_name,
-                    StageRun.status.in_([StageStatus.COMPLETED.value, StageStatus.FAILED.value]),
-                )
-                .order_by(StageRun.run_seq.desc())
-                .limit(1)
-            )
-        ).scalars().first()
-        if run is not None:
-            run.status = StageStatus.STALE.value
-    await db.commit()
 
 
 async def _running_stage_run(db: AsyncSession, task_id: str, stage: StageName) -> StageRun | None:
@@ -829,11 +797,6 @@ async def _run_analyze_stage(
         default_status=ChapterStateStatus.PENDING,
     )
     await db.commit()
-
-    # Analyze is re-running — mark downstream stages as stale so the UI
-    # reflects that their results are based on outdated analysis.
-    await _mark_downstream_stale(db, active_task.id)
-
     config_snapshot = await _load_config_snapshot(db)
     provider = await _resolve_provider_for_execution(db, provider_id)
 
@@ -1020,7 +983,6 @@ def _rewrite_results_cover_chapter_plan(chapter_plan: Any | None, results: list[
         RewriteResultStatus.ACCEPTED,
         RewriteResultStatus.ACCEPTED_EDITED,
         RewriteResultStatus.REJECTED,
-        RewriteResultStatus.ROLLED_BACK,
     }
     if any(item.status not in terminal_statuses for item in results):
         return False
@@ -1136,7 +1098,6 @@ def _split_rewrite_segments_for_execution(
         RewriteResultStatus.ACCEPTED,
         RewriteResultStatus.ACCEPTED_EDITED,
         RewriteResultStatus.REJECTED,
-        RewriteResultStatus.ROLLED_BACK,
     }
     terminal_results = [item for item in existing_results if item.status in terminal_statuses]
     pending_segments: list[Any] = []
@@ -1277,10 +1238,6 @@ async def _retry_analyze_stage_chapter(
         completed_at=None,
     )
     await db.commit()
-
-    # Single-chapter analyze retry — mark downstream stages as stale.
-    await _mark_downstream_stale(db, active_task.id)
-
     await db.refresh(latest_analyze)
     await _sync_stage_run_artifacts(
         request,
@@ -2468,7 +2425,6 @@ def _rewrite_payload_status_fields(segments: list[RewriteResult]) -> dict[str, A
         RewriteResultStatus.ACCEPTED,
         RewriteResultStatus.ACCEPTED_EDITED,
         RewriteResultStatus.REJECTED,
-        RewriteResultStatus.ROLLED_BACK,
     }
     statuses = {item.status for item in segments}
     if RewriteResultStatus.FAILED in statuses:
@@ -3206,16 +3162,43 @@ async def run_stage(
 
     running = await _running_stage_run(db, active_task.id, stage)
     if running is not None:
-        latest = await _latest_stage_run(db, active_task.id, stage)
-        artifact_path = str(
-            request.app.state.artifact_store.stage_run_manifest_path(novel_id, active_task.id, stage.value, running.run_seq)
-        )
-        return StageActionResponse(
-            novel_id=novel_id,
-            task_id=active_task.id,
-            stage=stage,
-            run=_to_run_info(running, artifact_path=artifact_path, is_latest=latest is not None and latest.id == running.id),
-        ).model_dump()
+        # Check for stuck runs (>30 min) and mark them as FAILED
+        if running.started_at and (datetime.utcnow() - running.started_at).total_seconds() > 1800:
+            running.status = StageStatus.FAILED.value
+            running.error_message = "Execution timed out (exceeded 30 minutes)"
+            running.completed_at = datetime.utcnow()
+            await db.commit()
+        else:
+            latest = await _latest_stage_run(db, active_task.id, stage)
+            artifact_path = str(
+                request.app.state.artifact_store.stage_run_manifest_path(novel_id, active_task.id, stage.value, running.run_seq)
+            )
+            return StageActionResponse(
+                novel_id=novel_id,
+                task_id=active_task.id,
+                stage=stage,
+                run=_to_run_info(running, artifact_path=artifact_path, is_latest=latest is not None and latest.id == running.id),
+            ).model_dump()
+
+    # --- Bug B4: upstream dependency validation ---
+    _STAGE_DEPENDENCIES = {
+        StageName.MARK: StageName.ANALYZE,
+        StageName.REWRITE: StageName.MARK,
+        StageName.ASSEMBLE: StageName.REWRITE,
+    }
+    upstream = _STAGE_DEPENDENCIES.get(stage)
+    if upstream is not None:
+        upstream_run = await _latest_stage_run(db, active_task.id, upstream)
+        if upstream_run is None or upstream_run.status not in (
+            StageStatus.COMPLETED.value,
+            StageStatus.STALE.value,
+        ):
+            upstream_label = {"analyze": "分析", "mark": "标记", "rewrite": "改写"}.get(upstream.value, upstream.value)
+            raise AppError(
+                ErrorCode.VALIDATION_ERROR,
+                f"请先完成「{upstream_label}」阶段",
+                details={"missing_upstream": upstream.value},
+            )
 
     if stage in {StageName.ANALYZE, StageName.MARK, StageName.REWRITE, StageName.ASSEMBLE}:
         run = await _create_stage_run(
@@ -3237,14 +3220,18 @@ async def run_stage(
                     stage_config_snapshot=stage_config_snapshot,
                     provider_id=provider_snapshot.id if provider_snapshot is not None else None,
                 )
-                await _run_mark_stage_after_analyze(
-                    request=request,
-                    db=db,
-                    novel_id=novel_id,
-                    active_task=active_task,
-                    stage_config_snapshot=stage_config_snapshot,
-                    idempotency_key=idempotency_key,
-                )
+                # Mark auto-run: failure here should NOT affect analyze status
+                try:
+                    await _run_mark_stage_after_analyze(
+                        request=request,
+                        db=db,
+                        novel_id=novel_id,
+                        active_task=active_task,
+                        stage_config_snapshot=stage_config_snapshot,
+                        idempotency_key=idempotency_key,
+                    )
+                except (AppError, Exception):
+                    pass  # mark run already marked FAILED internally
                 return analyze_response.model_dump()
             if stage == StageName.REWRITE:
                 return (await _run_rewrite_stage(

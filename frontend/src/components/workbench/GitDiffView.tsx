@@ -426,8 +426,8 @@ function computeCharacterStats(document: DiffDocument, oldText: string, newText:
       if (!hasOld || !hasNew) continue
 
       const segments = buildIntraRowCharacterSegments(leftText, rightText)
-      deletedChars += countChangedCharacters(segments.left)
-      addedChars += countChangedCharacters(segments.right)
+      deletedChars += countChangedVisibleCharacters(segments.left)
+      addedChars += countChangedVisibleCharacters(segments.right)
     }
   }
 

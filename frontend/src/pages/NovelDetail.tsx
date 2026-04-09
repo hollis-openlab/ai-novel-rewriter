@@ -316,7 +316,7 @@ function StageDetailCard({ novelId, stage, info, allStages, onActionDone }: Stag
           {info.status === 'completed' ? '已完成' :
            info.status === 'running' ? '运行中' :
            info.status === 'failed' ? '失败' :
-           (info.status === 'stale' || info.status === 'paused') ? '已暂停' : '待处理'}
+           info.status === 'stale' ? '已过期' : info.status === 'paused' ? '已暂停' : '待处理'}
         </span>
       </div>
 
@@ -556,7 +556,8 @@ function ChapterDots({ stageStatuses }: { stageStatuses: Partial<Record<StageNam
           status === 'failed' ? 'bg-error' :
           status === 'stale' || status === 'paused' ? 'bg-warning' :
           'bg-border'
-        return <span key={s} className={`w-2 h-2 rounded-full flex-shrink-0 ${color}`} title={STAGE_LABELS[s]} />
+        const label = status === 'stale' ? `${STAGE_LABELS[s]}（已过期）` : STAGE_LABELS[s]
+        return <span key={s} className={`w-2 h-2 rounded-full flex-shrink-0 ${color}`} title={label} />
       })}
     </div>
   )
@@ -1774,7 +1775,7 @@ function stageStatusLabel(status: StageStatus): string {
     case 'paused':
       return '已暂停'
     case 'stale':
-      return '已暂停'
+      return '已过期'
     default:
       return '待处理'
   }
@@ -2520,7 +2521,7 @@ export function NovelDetail() {
       if (msg.type === 'task_paused') {
         const pausedStage = (msg as { stage?: string }).stage
         setWsStageProgress((prev) => {
-          if (!pausedStage) return {}
+          if (!pausedStage) return prev
           if (!(pausedStage in prev)) return prev
           const next = { ...prev }
           delete next[pausedStage]
@@ -2541,6 +2542,9 @@ export function NovelDetail() {
         queryClient.invalidateQueries({ queryKey: ['chapter-analysis', id] })
         queryClient.invalidateQueries({ queryKey: ['chapter-rewrites', id] })
         queryClient.invalidateQueries({ queryKey: ['chapter-prompt-logs', id] })
+        if (msg.type === 'stage_completed' && msg.stage === 'assemble') {
+          queryClient.invalidateQueries({ queryKey: ['quality-report', id] })
+        }
       }
     })
 
@@ -3161,6 +3165,9 @@ export function NovelDetail() {
         tone: 'primary' as const,
         disabled: !previousStageCompleted,
       }
+    }
+    if (stageInfo.status === 'stale') {
+      return { key: 'run', label: '重跑', tone: 'primary' as const, disabled: false }
     }
     if (stageInfo.status === 'paused') {
       return { key: 'resume', label: '继续', tone: 'primary' as const, disabled: false }
