@@ -14,7 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from backend.app.api.schemas import ChapterAdjustResponse, ChapterRenameRequest, ChapterSplitRequest
 from backend.app.api.schemas import PromptLogEntryResponse, PromptLogListResponse, PromptLogRetryResponse
 from backend.app.api.redaction import sanitize_public_payload
-from backend.app.contracts.api import ChapterListItem, ChapterListResponse
+from backend.app.contracts.api import ChapterListItem, ChapterListResponse, ChapterStageTiming
 from backend.app.core.errors import AppError, ErrorCode
 from backend.app.db import Chapter as ChapterRow
 from backend.app.db import ChapterState, StageRun, Task, get_db_session
@@ -938,6 +938,7 @@ async def list_chapters(
 
     all_run_ids = [row.id for row in stage_rows]
     chapter_states_by_run: dict[str, dict[int, str]] = {}
+    chapter_state_objects_by_run: dict[str, dict[int, ChapterState]] = {}
     if all_run_ids:
         chapter_state_rows = (
             await db.execute(
@@ -946,6 +947,7 @@ async def list_chapters(
         ).scalars().all()
         for row in chapter_state_rows:
             chapter_states_by_run.setdefault(row.stage_run_id, {})[int(row.chapter_index)] = str(row.status)
+            chapter_state_objects_by_run.setdefault(row.stage_run_id, {})[int(row.chapter_index)] = row
 
     rewrite_expected_segments: dict[int, int] = {chapter.index: 0 for chapter in chapters}
     mark_plan_exists = False
@@ -1037,11 +1039,25 @@ async def list_chapters(
                 chapter_pos=chapter_pos.get(chapter.index, 0),
                 total_chapters=len(sorted_chapters),
             )
+        # Build per-stage timing from ChapterState objects
+        timings: dict[StageName, ChapterStageTiming] = {}
+        for stage_name_val, runs in stage_runs_by_stage.items():
+            if not runs:
+                continue
+            latest_run_for_timing = runs[0]
+            state_objs = chapter_state_objects_by_run.get(latest_run_for_timing.id) or {}
+            state_obj = state_objs.get(chapter.index)
+            if state_obj is not None:
+                timings[StageName(stage_name_val)] = ChapterStageTiming(
+                    started_at=state_obj.started_at.isoformat() if state_obj.started_at else None,
+                    completed_at=state_obj.completed_at.isoformat() if state_obj.completed_at else None,
+                )
         chapter_items.append(
             ChapterListItem(
                 **chapter.model_dump(mode="json"),
                 status=_aggregate_chapter_status(per_stage),
                 stages=per_stage,
+                stage_timings=timings,
             )
         )
 

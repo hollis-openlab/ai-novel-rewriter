@@ -545,7 +545,17 @@ function StageDetailCard({ novelId, stage, info, allStages, onActionDone }: Stag
 
 // ── Chapter Status Dots ───────────────────────────────────────────────────────
 
-function ChapterDots({ stageStatuses }: { stageStatuses: Partial<Record<StageName, StageStatus>> }) {
+function formatStageTime(iso?: string | null): string {
+  if (!iso) return ''
+  const d = new Date(iso)
+  if (isNaN(d.getTime())) return ''
+  return d.toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' })
+}
+
+function ChapterDots({ stageStatuses, stageTimings }: {
+  stageStatuses: Partial<Record<StageName, StageStatus>>
+  stageTimings?: Partial<Record<StageName, { started_at?: string | null; completed_at?: string | null }>>
+}) {
   return (
     <div className="flex items-center gap-1">
       {STAGE_NAMES.map(s => {
@@ -556,7 +566,15 @@ function ChapterDots({ stageStatuses }: { stageStatuses: Partial<Record<StageNam
           status === 'failed' ? 'bg-error' :
           status === 'stale' || status === 'paused' ? 'bg-warning' :
           'bg-border'
-        const label = status === 'stale' ? `${STAGE_LABELS[s]}（已过期）` : STAGE_LABELS[s]
+        const timing = stageTimings?.[s]
+        let label = status === 'stale' ? `${STAGE_LABELS[s]}（已过期）` : STAGE_LABELS[s]
+        if (status === 'completed' && timing?.completed_at) {
+          label += ` ${formatStageTime(timing.completed_at)}`
+        } else if (status === 'running' && timing?.started_at) {
+          label += ` 开始于 ${formatStageTime(timing.started_at)}`
+        } else if (status === 'failed' && timing?.completed_at) {
+          label += ` 失败于 ${formatStageTime(timing.completed_at)}`
+        }
         return <span key={s} className={`w-2 h-2 rounded-full flex-shrink-0 ${color}`} title={label} />
       })}
     </div>
@@ -3361,7 +3379,7 @@ export function NovelDetail() {
 
                   <div className="flex items-center justify-between gap-3">
                     <span className="text-caption text-secondary">{formatChars(chapterCharCount(chapter))}</span>
-                    <ChapterDots stageStatuses={{ ...(chapter.stages ?? {}), [selectedStage]: stageStatus }} />
+                    <ChapterDots stageStatuses={{ ...(chapter.stages ?? {}), [selectedStage]: stageStatus }} stageTimings={chapter.stage_timings} />
                   </div>
 
                   {riskLabels.length > 0 && (

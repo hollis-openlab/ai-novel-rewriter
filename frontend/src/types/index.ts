@@ -606,6 +606,11 @@ export interface NovelListItem {
   status: string
 }
 
+export interface ChapterStageTiming {
+  started_at?: string | null
+  completed_at?: string | null
+}
+
 export interface ChapterListItem {
   id: string
   index: number
@@ -614,6 +619,7 @@ export interface ChapterListItem {
   word_count?: number
   status?: string
   stages?: Partial<Record<StageName, StageStatus>>
+  stage_timings?: Partial<Record<StageName, ChapterStageTiming>>
 }
 
 export interface ChapterDetail {

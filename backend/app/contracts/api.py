@@ -43,11 +43,17 @@ class NovelDetailResponse(NovelMeta):
     pipeline_status: dict[StageName, StageRunInfo] = Field(default_factory=dict)
 
 
+class ChapterStageTiming(BaseModel):
+    started_at: str | None = None
+    completed_at: str | None = None
+
+
 class ChapterListItem(Chapter):
     model_config = ConfigDict(extra="forbid")
 
     status: StageStatus = StageStatus.PENDING
     stages: dict[StageName, StageStatus] = Field(default_factory=dict)
+    stage_timings: dict[StageName, ChapterStageTiming] = Field(default_factory=dict)
 
     @model_validator(mode="after")
     def ensure_stage_statuses(self) -> "ChapterListItem":
