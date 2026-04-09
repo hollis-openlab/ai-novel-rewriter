@@ -143,7 +143,7 @@ def test_build_rewrite_prompt_bundle_injects_context() -> None:
     assert "第一段战斗动作很快" in bundle.user_prompt
     assert "<rewrite_target>" in bundle.user_prompt
     assert "<context_before>" in bundle.user_prompt
-    assert "<context_after>" in bundle.user_prompt
+    assert "<context_after>" not in bundle.user_prompt
     assert bundle.context["preceding_text"] == preceding_text[-2000:]
     assert bundle.context["following_text"] == following_text[:2000]
     assert bundle.context["window_text"].startswith("第一段战斗动作很快")

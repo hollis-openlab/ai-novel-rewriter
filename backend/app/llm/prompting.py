@@ -66,13 +66,14 @@ REWRITE_SYSTEM_TEMPLATE = """
 你是一个小说内容改写模型。
 你必须只输出”目标片段”的改写正文，不要输出解释、标题、代码块或 Markdown。
 禁止输出任何元话术，例如”与原文不同””改写后如下””说明：”。
-用户提示中使用 XML 标签标记不同区域：<context_before> 和 <context_after> 为只读上下文，<rewrite_target> 为你需要改写的目标片段。
+用户提示中使用 XML 标签标记不同区域：<context_before> 为只读前文上下文，<rewrite_target> 为你需要改写的目标片段。
+重要：不要在改写中提前引入目标片段之后才出现的人物姓名、情节或信息。
 """.strip()
 
 REWRITE_USER_TEMPLATE = """
 请在遵守上下文与规则的前提下改写 <rewrite_target> 中的目标片段。
 你只能输出目标片段的最终正文，不能输出前文、后文、说明文字或比较原文的句子。
-<context_before> 和 <context_after> 是只读上下文，禁止改写或输出其中的内容。
+<context_before> 是只读前文上下文，禁止改写或输出其中的内容。
 
 {% if rewrite_general_guidance %}
 改写通用指导：
@@ -100,10 +101,6 @@ REWRITE_USER_TEMPLATE = """
 <context_before>
 {{ preceding_context if preceding_context is defined else preceding_text }}
 </context_before>
-
-<context_after>
-{{ following_context if following_context is defined else following_text }}
-</context_after>
 
 改写模式：
 {{ rewrite_mode }}
