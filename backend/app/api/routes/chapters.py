@@ -822,7 +822,7 @@ def _rewrite_preview_from_mark_segment(chapter: Chapter, segment: RewriteSegment
         has_warnings=False,
         warning_count=0,
         warning_codes=[],
-        anchor_verified=False,
+        anchor_verified=True,
         strategy=segment.strategy,
         original_text=original_text,
         rewritten_text="",

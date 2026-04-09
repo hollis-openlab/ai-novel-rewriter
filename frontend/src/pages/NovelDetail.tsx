@@ -1885,8 +1885,9 @@ function isAcceptedRewriteStatus(status?: string | null): boolean {
   return status === 'completed' || status === 'accepted' || status === 'accepted_edited'
 }
 
-function hasAnchorConflict(segment?: { error_code?: string | null; anchor_verified?: boolean | null } | null): boolean {
+function hasAnchorConflict(segment?: { error_code?: string | null; anchor_verified?: boolean | null; status?: string | null } | null): boolean {
   if (!segment) return false
+  if (segment.status === 'pending') return false
   return segment.error_code === 'ANCHOR_MISMATCH' || segment.anchor_verified === false
 }
 
