@@ -333,6 +333,12 @@ export const chapters = {
       body: JSON.stringify(analysis)
     }),
 
+  deleteChapter: (novelId: string, chapterIdx: number) =>
+    apiFetch<void>(`/novels/${novelId}/chapters/${chapterIdx}`, { method: 'DELETE' }),
+
+  mergeNext: (novelId: string, chapterIdx: number) =>
+    apiFetch<void>(`/novels/${novelId}/chapters/${chapterIdx}/merge-next`, { method: 'POST' }),
+
   getRewrites: (novelId: string, chapterIdx: number) =>
     apiFetch<RewriteSegment[]>(`/novels/${novelId}/chapters/${chapterIdx}/rewrites`),
 

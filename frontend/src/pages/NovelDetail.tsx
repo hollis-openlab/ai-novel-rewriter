@@ -3382,6 +3382,41 @@ export function NovelDetail() {
                     <ChapterDots stageStatuses={{ ...(chapter.stages ?? {}), [selectedStage]: stageStatus }} stageTimings={chapter.stage_timings} />
                   </div>
 
+                  {selectedStage === 'split' && (
+                    <div className="flex gap-2" onClick={(e) => e.stopPropagation()}>
+                      <button
+                        type="button"
+                        className="rounded-lg px-2 py-1 text-[11px] text-secondary hover:bg-error/10 hover:text-error transition-colors"
+                        title="删除本章"
+                        onClick={async (e) => {
+                          e.stopPropagation()
+                          if (!id) return
+                          try {
+                            await chaptersApi.deleteChapter(id, chapter.index)
+                            queryClient.invalidateQueries({ queryKey: ['chapters', id] })
+                          } catch (err) { console.error(err) }
+                        }}
+                      >
+                        删除
+                      </button>
+                      <button
+                        type="button"
+                        className="rounded-lg px-2 py-1 text-[11px] text-secondary hover:bg-accent/10 hover:text-accent transition-colors"
+                        title="与下一章合并"
+                        onClick={async (e) => {
+                          e.stopPropagation()
+                          if (!id) return
+                          try {
+                            await chaptersApi.mergeNext(id, chapter.index)
+                            queryClient.invalidateQueries({ queryKey: ['chapters', id] })
+                          } catch (err) { console.error(err) }
+                        }}
+                      >
+                        合并下一章
+                      </button>
+                    </div>
+                  )}
+
                   {riskLabels.length > 0 && (
                     <div className="flex flex-wrap gap-2">
                       {riskLabels.map((label) => (

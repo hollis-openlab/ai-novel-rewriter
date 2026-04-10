@@ -1427,6 +1427,27 @@ async def merge_next_chapter(
     return await _persist_chapters(request, db, novel_id, task, updated_payloads)
 
 
+@router.delete("/{chapter_idx}", response_model=ChapterAdjustResponse)
+async def delete_chapter(
+    novel_id: str,
+    chapter_idx: int,
+    request: Request,
+    db: AsyncSession = Depends(get_db_session),
+) -> ChapterAdjustResponse:
+    task, payloads, _ = await _load_chapter_payloads(request, db, novel_id)
+    if not payloads:
+        raise AppError(ErrorCode.NOT_FOUND, "No split chapters available", status.HTTP_404_NOT_FOUND)
+    if len(payloads) <= 1:
+        raise AppError(ErrorCode.VALIDATION_ERROR, "Cannot delete the only remaining chapter")
+
+    target_index = next((i for i, chapter in enumerate(payloads) if int(chapter["index"]) == chapter_idx), None)
+    if target_index is None:
+        raise AppError(ErrorCode.NOT_FOUND, f"Chapter `{chapter_idx}` not found", status.HTTP_404_NOT_FOUND)
+
+    updated_payloads = payloads[:target_index] + payloads[target_index + 1:]
+    return await _persist_chapters(request, db, novel_id, task, updated_payloads)
+
+
 @router.get("/{chapter_idx}/prompt-logs", response_model=PromptLogListResponse)
 async def list_prompt_logs(novel_id: str, chapter_idx: int) -> PromptLogListResponse:
     entries = sorted(
