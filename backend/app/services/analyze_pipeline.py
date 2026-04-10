@@ -414,6 +414,36 @@ async def analyze_chapter(
     if not request.chapter_text.strip():
         raise AppError(ErrorCode.VALIDATION_ERROR, "chapter_text is required")
 
+    MIN_CHAPTER_CHARS_FOR_ANALYSIS = 50
+    if len(request.chapter_text.strip()) < MIN_CHAPTER_CHARS_FOR_ANALYSIS:
+        empty_analysis = ChapterAnalysis(
+            summary=request.chapter_text.strip(),
+            characters=[],
+            key_events=[],
+            scenes=[],
+            location="",
+            tone="",
+        )
+        noop_bundle = StagePromptBundle(stage="analyze", system_prompt="", user_prompt="", context={})
+        noop_completion = CompletionResponse(
+            provider_type=request.provider_type,
+            model_name=request.model_name,
+            text=empty_analysis.model_dump_json(),
+            finish_reason="skip",
+            usage={},
+        )
+        noop_validation = AnalyzeValidationResult(
+            passed=True,
+            analysis=empty_analysis,
+        )
+        return AnalyzeChapterResult(
+            request=request,
+            analysis=empty_analysis,
+            validation=noop_validation,
+            completion=noop_completion,
+            prompt_bundle=noop_bundle,
+        )
+
     prompt_bundle, completion_request = build_analyze_completion_request(
         request.chapter_text,
         model_name=request.model_name,
