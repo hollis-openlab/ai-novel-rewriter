@@ -7,7 +7,7 @@ from backend.app.core.errors import AppError, ErrorCode
 from backend.app.core.prompt_templates import PromptTemplateRegistry
 from backend.app.llm.interface import ChatMessage
 
-StageNameLiteral = Literal["split", "analyze", "rewrite"]
+StageNameLiteral = Literal["split", "analyze", "outline", "rewrite"]
 
 DEFAULT_PROMPT_REGISTRY = PromptTemplateRegistry()
 
@@ -62,6 +62,62 @@ ANALYZE_USER_TEMPLATE = """
 {{ chapter_text }}
 """.strip()
 
+OUTLINE_SYSTEM_TEMPLATE = """
+你是一个小说改写规划模型。根据章节原文和已标记的改写片段，为每个片段规划改写范围和边界。
+输出必须严格为 JSON，不要输出 Markdown、解释或额外文本。
+""".strip()
+
+OUTLINE_USER_TEMPLATE = """
+请为以下章节的每个待改写片段规划改写范围。
+
+{% if global_prompt %}
+全局提示词：
+{{ global_prompt }}
+{% endif %}
+
+章节摘要：
+{{ chapter_summary }}
+
+人物状态：
+{{ character_states | tojson }}
+
+关键事件：
+{{ key_events | tojson }}
+
+章节全文：
+{{ chapter_text }}
+
+待改写片段列表（按顺序）：
+{% for seg in segments %}
+- 片段 {{ seg.index }}/{{ seg.total }}:
+  ID: {{ seg.segment_id }}
+  场景类型: {{ seg.scene_type }}
+  改写策略: {{ seg.strategy }}
+  建议: {{ seg.suggestion }}
+  原文摘录: {{ seg.original_text_preview }}
+{% endfor %}
+
+请输出 JSON，格式如下：
+{
+  "beats": [
+    {
+      "beat_index": 1,
+      "segment_id": "对应的片段ID",
+      "scope": "本段应覆盖的具体内容（人物动作、对话、场景描写等）",
+      "boundary": "本段应在何处结束，绝对不应写入什么内容（明确指出后续情节点）",
+      "tone": "本段基调（如：压抑、紧张、暧昧、温柔等）"
+    }
+  ]
+}
+
+关键要求：
+1. 每个片段必须有明确的结束边界，防止剧情跑到后面片段的范围
+2. 后续片段才出现的情节、对话、人物反应，绝不能提前出现在前面的片段中
+3. 相邻片段之间要有自然的叙事过渡点
+4. scope 要具体到"写什么"，不要笼统
+5. boundary 要具体到"不写什么"，不要笼统
+""".strip()
+
 REWRITE_SYSTEM_TEMPLATE = """
 你是一个小说内容改写模型。
 你必须只输出”目标片段”的改写正文，不要输出解释、标题、代码块或 Markdown。
@@ -97,6 +153,21 @@ REWRITE_USER_TEMPLATE = """
 
 人物状态：
 {{ character_states | tojson }}
+
+{% if outline_beat is defined and outline_beat %}
+你正在改写本章的第 {{ outline_beat.beat_index }}/{{ outline_total }} 个情节段落。
+
+本段职责：{{ outline_beat.scope }}
+本段边界：{{ outline_beat.boundary }}
+本段基调：{{ outline_beat.tone }}
+
+{% if following_beats is defined and following_beats %}
+后续段落概要（只读，不要提前写入这些内容）：
+{% for beat in following_beats %}
+- 第{{ beat.beat_index }}段：{{ beat.scope }}
+{% endfor %}
+{% endif %}
+{% endif %}
 
 <context_before>
 {{ preceding_context if preceding_context is defined else preceding_text }}
@@ -212,6 +283,9 @@ def build_stage_prompts(
             else stage_system_prompt
         )
         user_prompt = _render(ANALYZE_USER_TEMPLATE, payload, registry=active_registry)
+    elif resolved_stage == "outline":
+        system_prompt = _render(OUTLINE_SYSTEM_TEMPLATE, payload, registry=active_registry)
+        user_prompt = _render(OUTLINE_USER_TEMPLATE, payload, registry=active_registry)
     else:
         stage_system_prompt = _render(REWRITE_SYSTEM_TEMPLATE, payload, registry=active_registry)
         system_prompt = (

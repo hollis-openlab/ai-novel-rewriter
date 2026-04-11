@@ -98,6 +98,8 @@ class RewriteSegmentRequest:
     window_guardrail_enabled: bool = True
     window_audit_enabled: bool = True
     skip_anchor_validation: bool = False
+    outline_beat: Any | None = None
+    following_beats: Sequence[Any] = field(default_factory=tuple)
 
 
 @dataclass(slots=True)
@@ -735,6 +737,9 @@ def build_rewrite_prompt_bundle(
     segment_text_override: str | None = None,
     rewrite_part_index: int | None = None,
     rewrite_part_total: int | None = None,
+    outline_beat: Any | None = None,
+    outline_total: int = 0,
+    following_beats: Sequence[Any] | None = None,
     registry: PromptTemplateRegistry | None = None,
 ) -> StagePromptBundle:
     """Build the rewrite prompt bundle for a single segment."""
@@ -762,6 +767,14 @@ def build_rewrite_prompt_bundle(
     if rewrite_part_index is not None and rewrite_part_total is not None:
         context["rewrite_part_index"] = rewrite_part_index
         context["rewrite_part_total"] = rewrite_part_total
+    if outline_beat is not None:
+        beat_dict = outline_beat.model_dump(mode="json") if hasattr(outline_beat, "model_dump") else outline_beat
+        context["outline_beat"] = beat_dict
+        context["outline_total"] = outline_total
+        context["following_beats"] = [
+            b.model_dump(mode="json") if hasattr(b, "model_dump") else b
+            for b in (following_beats or [])
+        ]
     return build_stage_prompts("rewrite", global_prompt=global_prompt, context=context, registry=registry)
 
 
@@ -784,6 +797,9 @@ def build_rewrite_completion_request(
     segment_text_override: str | None = None,
     rewrite_part_index: int | None = None,
     rewrite_part_total: int | None = None,
+    outline_beat: Any | None = None,
+    outline_total: int = 0,
+    following_beats: Sequence[Any] | None = None,
     metadata_extra: Mapping[str, Any] | None = None,
     registry: PromptTemplateRegistry | None = None,
 ) -> tuple[StagePromptBundle, CompletionRequest]:
@@ -804,6 +820,9 @@ def build_rewrite_completion_request(
         segment_text_override=segment_text_override,
         rewrite_part_index=rewrite_part_index,
         rewrite_part_total=rewrite_part_total,
+        outline_beat=outline_beat,
+        outline_total=outline_total,
+        following_beats=following_beats,
         registry=registry,
     )
     resolved_generation = build_generation_params(provider_defaults=generation)
@@ -997,6 +1016,9 @@ async def _execute_rewrite_segment_once(
             generation=resolved_generation,
             context_window_size=request.context_window_size,
             context_chars=request.context_chars,
+            outline_beat=request.outline_beat,
+            outline_total=len(request.following_beats) + (1 if request.outline_beat else 0),
+            following_beats=request.following_beats,
             registry=request.prompt_registry,
         )
 
@@ -1120,6 +1142,9 @@ async def _execute_rewrite_segment_once(
             segment_text_override=part.source_text,
             rewrite_part_index=part.index,
             rewrite_part_total=len(auto_split_plan.parts),
+            outline_beat=request.outline_beat,
+            outline_total=len(request.following_beats) + (1 if request.outline_beat else 0),
+            following_beats=request.following_beats,
             metadata_extra={
                 "auto_split": True,
                 "rewrite_part_index": part.index,

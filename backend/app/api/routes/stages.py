@@ -2251,6 +2251,20 @@ def _load_rewrite_results_map(
     return mapped
 
 
+def _following_beats_for(segment_id: str, outline: Any) -> list[Any]:
+    """Return beats that come after the given segment's beat in the outline."""
+    if not outline or not outline.beats:
+        return []
+    found = False
+    result = []
+    for beat in outline.beats:
+        if found:
+            result.append(beat)
+        elif beat.segment_id == segment_id:
+            found = True
+    return result
+
+
 def _segment_source_text(chapter: Chapter, segment: RewriteSegment) -> str:
     source_text, _ = extract_segment_source_text(chapter, segment)
     return source_text
@@ -2650,6 +2664,35 @@ async def _run_rewrite_stage(
             pending_segments,
             rewrite_target_added_chars_override,
         )
+
+        # Generate chapter outline to guide each segment's rewrite scope
+        from backend.app.services.outline_pipeline import (
+            OutlineChapterRequest,
+            generate_chapter_outline,
+            persist_outline_result,
+        )
+        outline_request = OutlineChapterRequest(
+            novel_id=novel_id,
+            task_id=active_task.id,
+            chapter=chapters_by_index[chapter.index],
+            analysis=analysis,
+            segments=adjusted_segments,
+            global_prompt=config_snapshot.global_prompt,
+            provider_type=CoreProviderType(provider.provider_type),
+            api_key=api_key,
+            base_url=provider.base_url,
+            model_name=provider.model_name,
+            generation={
+                "temperature": provider.temperature,
+                "max_tokens": provider.max_tokens,
+                "top_p": provider.top_p,
+            },
+        )
+        outline_result = await generate_chapter_outline(outline_request)
+        persist_outline_result(artifact_store, novel_id, active_task.id, outline_result)
+        chapter_outline = outline_result.outline
+        beats_by_segment_id = {beat.segment_id: beat for beat in chapter_outline.beats}
+
         segment_requests = [
             # Chapter-level added-chars target is distributed across marked segments.
             RewriteSegmentRequest(
@@ -2676,6 +2719,8 @@ async def _run_rewrite_stage(
                 window_mode_enabled=bool(stage_config_snapshot.rewrite_window_mode.enabled),
                 window_guardrail_enabled=bool(stage_config_snapshot.rewrite_window_mode.guardrail_enabled),
                 window_audit_enabled=bool(stage_config_snapshot.rewrite_window_mode.audit_enabled),
+                outline_beat=beats_by_segment_id.get(segment.segment_id),
+                following_beats=_following_beats_for(segment.segment_id, chapter_outline),
             )
             for segment in adjusted_segments
         ]

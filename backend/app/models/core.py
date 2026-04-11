@@ -225,6 +225,24 @@ class ChapterAnalysis(BaseModel):
     tone: str
 
 
+class NarrativeBeat(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    beat_index: int = Field(ge=1)
+    segment_id: str
+    scope: str
+    boundary: str
+    tone: str
+
+
+class ChapterOutline(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    chapter_index: int = Field(ge=1)
+    total_beats: int = Field(ge=0)
+    beats: list[NarrativeBeat] = Field(default_factory=list)
+
+
 class RewriteAnchor(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
