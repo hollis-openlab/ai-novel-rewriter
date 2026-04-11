@@ -196,7 +196,7 @@ def get_prompt_registry() -> PromptTemplateRegistry:
 
 
 def _validate_stage(stage: str) -> StageNameLiteral:
-    if stage not in {"split", "analyze", "rewrite"}:
+    if stage not in {"split", "analyze", "outline", "rewrite"}:
         raise AppError(ErrorCode.VALIDATION_ERROR, f"Unsupported prompt stage `{stage}`")
     return stage  # type: ignore[return-value]
 
