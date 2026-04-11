@@ -2307,12 +2307,13 @@ function ActionButton({
   tone?: 'primary' | 'secondary' | 'warning' | 'danger'
   icon?: ReactNode
 }) {
+  const baseButtonClass = 'font-medium px-4 py-2 rounded-lg transition-colors duration-150 cursor-pointer'
   const toneClass = tone === 'secondary'
     ? 'button-secondary'
     : tone === 'warning'
-      ? 'bg-warning/10 text-warning hover:bg-warning/20'
+      ? `${baseButtonClass} bg-warning/10 text-warning hover:bg-warning/20`
       : tone === 'danger'
-        ? 'bg-error/10 text-error hover:bg-error/15'
+        ? `${baseButtonClass} bg-error/10 text-error hover:bg-error/15`
         : 'button-primary'
 
   return (
