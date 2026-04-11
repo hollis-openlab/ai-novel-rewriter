@@ -2689,7 +2689,7 @@ async def _run_rewrite_stage(
             },
         )
         outline_result = await generate_chapter_outline(outline_request)
-        persist_outline_result(artifact_store, novel_id, active_task.id, outline_result)
+        persist_outline_result(request.app.state.artifact_store, novel_id, active_task.id, outline_result)
         chapter_outline = outline_result.outline
         beats_by_segment_id = {beat.segment_id: beat for beat in chapter_outline.beats}
 
