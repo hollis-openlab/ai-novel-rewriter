@@ -2659,7 +2659,9 @@ async def _run_rewrite_stage(
                 details={"missing_chapters": [chapter.index]},
             )
 
-        pending_segments, retained_results = _split_rewrite_segments_for_execution(chapter_plan, existing_results)
+        # Full stage run always re-rewrites all segments (force rerun).
+        # Incremental execution is handled by _retry_rewrite_chapter_stage.
+        pending_segments = list(chapter_plan.segments) if chapter_plan and chapter_plan.segments else []
         adjusted_segments = _segments_with_added_chars_override(
             pending_segments,
             rewrite_target_added_chars_override,
