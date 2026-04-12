@@ -2762,7 +2762,7 @@ async def _run_rewrite_stage(
             await db.commit()
             raise
 
-        results = [*retained_results, *results]
+        results = list(results)
         if chapter_plan.segments:
             by_segment_id = {item.segment_id: item for item in results if item.segment_id}
             ordered: list[RewriteResult] = []
