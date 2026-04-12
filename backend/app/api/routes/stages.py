@@ -2781,6 +2781,53 @@ async def _run_rewrite_stage(
                     ordered.append(fallback)
             results = ordered or results
 
+        # ===== Post-rewrite review: detect and fix plot advancement issues =====
+        from backend.app.services.review_pipeline import (
+            ReviewChapterRequest,
+            build_assembled_text_for_review,
+            persist_review_result,
+            review_chapter_rewrites,
+        )
+        completed_results = [r for r in results if r.status == RewriteResultStatus.COMPLETED and r.char_offset_range]
+        if completed_results:
+            last_seg_end = max(r.char_offset_range[1] for r in completed_results)
+            following_original = chapters_by_index[chapter.index].content[last_seg_end:last_seg_end + 2000]
+
+            review_request = ReviewChapterRequest(
+                novel_id=novel_id,
+                task_id=active_task.id,
+                chapter=chapters_by_index[chapter.index],
+                analysis=analysis,
+                rewrite_results=results,
+                outline=chapter_outline,
+                following_original_text=following_original,
+                global_prompt=config_snapshot.global_prompt,
+                provider_type=CoreProviderType(provider.provider_type),
+                api_key=api_key,
+                base_url=provider.base_url,
+                model_name=provider.model_name,
+                generation={"temperature": provider.temperature, "max_tokens": provider.max_tokens},
+            )
+            review_response = await review_chapter_rewrites(review_request)
+            persist_review_result(request.app.state.artifact_store, novel_id, active_task.id, review_response)
+
+            if not review_response.review.all_passed:
+                # Re-rewrite only the problematic segments with fix constraints
+                seg_req_by_id = {req.segment.segment_id: req for req in segment_requests}
+                for issue in review_response.review.issues:
+                    fix_req = seg_req_by_id.get(issue.segment_id)
+                    if fix_req is None:
+                        continue
+                    fix_req.rewrite_general_guidance += (
+                        f"\n\n[审核反馈] {issue.problem}\n[修复边界] {issue.fix_boundary}"
+                    )
+                    fix_result = await _submit(fix_req)
+                    if fix_result.status == RewriteResultStatus.COMPLETED:
+                        idx = next((i for i, r in enumerate(results) if r.segment_id == issue.segment_id), None)
+                        if idx is not None:
+                            results[idx] = fix_result
+        # ===== End review =====
+
         await _upsert_chapter_state(
             db,
             run,

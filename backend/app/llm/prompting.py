@@ -7,7 +7,7 @@ from backend.app.core.errors import AppError, ErrorCode
 from backend.app.core.prompt_templates import PromptTemplateRegistry
 from backend.app.llm.interface import ChatMessage
 
-StageNameLiteral = Literal["split", "analyze", "outline", "rewrite"]
+StageNameLiteral = Literal["split", "analyze", "outline", "rewrite", "review"]
 
 DEFAULT_PROMPT_REGISTRY = PromptTemplateRegistry()
 
@@ -118,6 +118,50 @@ OUTLINE_USER_TEMPLATE = """
 5. boundary 要具体到"不写什么"，不要笼统
 """.strip()
 
+REVIEW_SYSTEM_TEMPLATE = """
+你是一个小说改写质量审核模型。检查改写后的文本是否存在剧情超跑（提前写入后续才出现的情节）、与后续原文重复或冲突的问题。
+输出必须严格为 JSON，不要输出 Markdown、解释或额外文本。
+""".strip()
+
+REVIEW_USER_TEMPLATE = """
+请审核以下章节的改写结果，检查是否存在剧情超跑问题。
+
+改写后的完整章节文本：
+{{ assembled_text }}
+
+{% if following_original_text %}
+最后一个改写段落之后的原文（用于判断衔接是否正确）：
+{{ following_original_text }}
+{% endif %}
+
+各改写段落信息：
+{% for seg in segments %}
+- 段落 {{ seg.index }}（ID: {{ seg.segment_id }}）:
+  改写前: {{ seg.original_text_preview }}...
+  改写后: {{ seg.rewritten_text_preview }}...
+  {% if seg.boundary %}大纲边界: {{ seg.boundary }}{% endif %}
+{% endfor %}
+
+请检查每个改写段落是否：
+1. 超跑了大纲规定的边界（写了边界之后才该出现的内容）
+2. 包含了后续原文才出现的情节、对话或人物动作
+3. 与紧接其后的原文或下一个改写段落产生了重复或冲突
+
+输出 JSON：
+{
+  "issues": [
+    {
+      "segment_id": "问题段落的ID",
+      "problem": "具体描述超跑了什么内容",
+      "fix_boundary": "修复时应该在哪里停止，不应写入什么"
+    }
+  ],
+  "all_passed": true或false
+}
+
+如果所有段落都没有问题，输出 {"issues": [], "all_passed": true}
+""".strip()
+
 REWRITE_SYSTEM_TEMPLATE = """
 你是一个小说内容改写模型。
 你必须只输出”目标片段”的改写正文，不要输出解释、标题、代码块或 Markdown。
@@ -196,7 +240,7 @@ def get_prompt_registry() -> PromptTemplateRegistry:
 
 
 def _validate_stage(stage: str) -> StageNameLiteral:
-    if stage not in {"split", "analyze", "outline", "rewrite"}:
+    if stage not in {"split", "analyze", "outline", "rewrite", "review"}:
         raise AppError(ErrorCode.VALIDATION_ERROR, f"Unsupported prompt stage `{stage}`")
     return stage  # type: ignore[return-value]
 
@@ -286,6 +330,9 @@ def build_stage_prompts(
     elif resolved_stage == "outline":
         system_prompt = _render(OUTLINE_SYSTEM_TEMPLATE, payload, registry=active_registry)
         user_prompt = _render(OUTLINE_USER_TEMPLATE, payload, registry=active_registry)
+    elif resolved_stage == "review":
+        system_prompt = _render(REVIEW_SYSTEM_TEMPLATE, payload, registry=active_registry)
+        user_prompt = _render(REVIEW_USER_TEMPLATE, payload, registry=active_registry)
     else:
         stage_system_prompt = _render(REWRITE_SYSTEM_TEMPLATE, payload, registry=active_registry)
         system_prompt = (
