@@ -100,6 +100,7 @@ class RewriteSegmentRequest:
     skip_anchor_validation: bool = False
     outline_beat: Any | None = None
     following_beats: Sequence[Any] = field(default_factory=tuple)
+    preserved_following_text: str = ""
 
 
 @dataclass(slots=True)
@@ -740,6 +741,7 @@ def build_rewrite_prompt_bundle(
     outline_beat: Any | None = None,
     outline_total: int = 0,
     following_beats: Sequence[Any] | None = None,
+    preserved_following_text: str = "",
     registry: PromptTemplateRegistry | None = None,
 ) -> StagePromptBundle:
     """Build the rewrite prompt bundle for a single segment."""
@@ -775,6 +777,8 @@ def build_rewrite_prompt_bundle(
             b.model_dump(mode="json") if hasattr(b, "model_dump") else b
             for b in (following_beats or [])
         ]
+    if preserved_following_text:
+        context["preserved_following_text"] = preserved_following_text
     return build_stage_prompts("rewrite", global_prompt=global_prompt, context=context, registry=registry)
 
 
@@ -800,6 +804,7 @@ def build_rewrite_completion_request(
     outline_beat: Any | None = None,
     outline_total: int = 0,
     following_beats: Sequence[Any] | None = None,
+    preserved_following_text: str = "",
     metadata_extra: Mapping[str, Any] | None = None,
     registry: PromptTemplateRegistry | None = None,
 ) -> tuple[StagePromptBundle, CompletionRequest]:
@@ -823,6 +828,7 @@ def build_rewrite_completion_request(
         outline_beat=outline_beat,
         outline_total=outline_total,
         following_beats=following_beats,
+        preserved_following_text=preserved_following_text,
         registry=registry,
     )
     resolved_generation = build_generation_params(provider_defaults=generation)
@@ -1019,6 +1025,7 @@ async def _execute_rewrite_segment_once(
             outline_beat=request.outline_beat,
             outline_total=len(request.following_beats) + (1 if request.outline_beat else 0),
             following_beats=request.following_beats,
+            preserved_following_text=request.preserved_following_text,
             registry=request.prompt_registry,
         )
 
@@ -1145,6 +1152,7 @@ async def _execute_rewrite_segment_once(
             outline_beat=request.outline_beat,
             outline_total=len(request.following_beats) + (1 if request.outline_beat else 0),
             following_beats=request.following_beats,
+            preserved_following_text=request.preserved_following_text,
             metadata_extra={
                 "auto_split": True,
                 "rewrite_part_index": part.index,

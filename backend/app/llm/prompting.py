@@ -223,6 +223,13 @@ REWRITE_USER_TEMPLATE = """
 <rewrite_target>
 {{ window_text if window_text is defined else segment_text }}
 </rewrite_target>
+
+{% if preserved_following_text is defined and preserved_following_text %}
+<preserved_after>
+{{ preserved_following_text }}
+</preserved_after>
+注意：<preserved_after> 中的文字紧接在你的改写之后，会被原样保留不做任何修改。你的改写绝不能包含或重复其中的任何情节、对话或动作。
+{% endif %}
 """.strip()
 
 

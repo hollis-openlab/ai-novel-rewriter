@@ -2695,6 +2695,20 @@ async def _run_rewrite_stage(
         chapter_outline = outline_result.outline
         beats_by_segment_id = {beat.segment_id: beat for beat in chapter_outline.beats}
 
+        # Compute preserved following text for each segment (the gap after it)
+        _PRESERVED_FOLLOWING_CHARS = 200
+        sorted_segs = sorted(adjusted_segments, key=lambda s: (s.char_offset_range or (0, 0))[0])
+        _preserved_following_map: dict[str, str] = {}
+        ch_content = chapters_by_index[chapter.index].content
+        for i, seg in enumerate(sorted_segs):
+            seg_end = (seg.char_offset_range or (0, 0))[1]
+            if i + 1 < len(sorted_segs):
+                next_start = (sorted_segs[i + 1].char_offset_range or (0, 0))[0]
+                gap_text = ch_content[seg_end:next_start]
+            else:
+                gap_text = ch_content[seg_end:seg_end + _PRESERVED_FOLLOWING_CHARS]
+            _preserved_following_map[seg.segment_id] = gap_text[:_PRESERVED_FOLLOWING_CHARS]
+
         segment_requests = [
             # Chapter-level added-chars target is distributed across marked segments.
             RewriteSegmentRequest(
@@ -2723,6 +2737,7 @@ async def _run_rewrite_stage(
                 window_audit_enabled=bool(stage_config_snapshot.rewrite_window_mode.audit_enabled),
                 outline_beat=beats_by_segment_id.get(segment.segment_id),
                 following_beats=_following_beats_for(segment.segment_id, chapter_outline),
+                preserved_following_text=_preserved_following_map.get(segment.segment_id, ""),
             )
             for segment in adjusted_segments
         ]
