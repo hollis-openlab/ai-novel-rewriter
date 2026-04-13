@@ -20,7 +20,7 @@ class WSManager {
     this.ws = new WebSocket(`${protocol}//${location.host}/ws/progress`)
 
     this.ws.onopen = () => {
-      console.log('WebSocket connected')
+      // Connected
       this.reconnectDelay = 1000
 
       // Re-subscribe after reconnect
@@ -52,7 +52,7 @@ class WSManager {
     }
 
     this.ws.onclose = () => {
-      console.log('WebSocket disconnected')
+      // Disconnected
       if (this.pingInterval) {
         clearInterval(this.pingInterval)
         this.pingInterval = null

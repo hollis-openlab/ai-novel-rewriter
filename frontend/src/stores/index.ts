@@ -275,13 +275,9 @@ export function useWSSync() {
             break
 
           case 'task_paused':
-            // Handle task pause - could update UI state
-            console.log(`Task paused for novel ${msg.novel_id}`)
             break
 
           case 'task_resumed':
-            // Handle task resume
-            console.log(`Task resumed for novel ${msg.novel_id}`)
             break
 
           case 'stage_stale':
