@@ -822,9 +822,22 @@ async def _run_analyze_stage(
             request_tokens=request_tokens,
         )
 
+    # Determine which chapters already completed (skip on retry)
+    existing_states = (
+        await db.execute(
+            select(ChapterState)
+            .where(ChapterState.stage_run_id == run.id)
+        )
+    ).scalars().all()
+    completed_chapters = {int(s.chapter_index) for s in existing_states if s.status == ChapterStateStatus.COMPLETED.value}
+
     results = []
+    failed_chapter_count = 0
     if requests:
         for item in requests:
+            if item.chapter_index in completed_chapters:
+                continue
+
             await _upsert_chapter_state(
                 db,
                 run,
@@ -837,28 +850,19 @@ async def _run_analyze_stage(
             await db.commit()
             try:
                 result = await _submit(item)
-            except AppError as exc:
+            except (AppError, Exception) as exc:
+                error_msg = getattr(exc, "message", None) or str(exc)
                 await _upsert_chapter_state(
                     db,
                     run,
                     chapter_index=item.chapter_index,
                     status=ChapterStateStatus.FAILED,
-                    error_message=exc.message,
+                    error_message=error_msg,
                     completed_at=datetime.utcnow(),
                 )
                 await db.commit()
-                raise
-            except Exception:
-                await _upsert_chapter_state(
-                    db,
-                    run,
-                    chapter_index=item.chapter_index,
-                    status=ChapterStateStatus.FAILED,
-                    error_message="Analyze chapter execution failed",
-                    completed_at=datetime.utcnow(),
-                )
-                await db.commit()
-                raise
+                failed_chapter_count += 1
+                continue
             results.append(result)
             persist_analysis_results(artifact_store, [result])
             await _upsert_chapter_state(
@@ -887,12 +891,23 @@ async def _run_analyze_stage(
             )
     else:
         rebuild_analysis_aggregate(artifact_store, novel_id, active_task.id)
-    await _mark_stage_run_success(
-        db,
-        run,
-        chapters_total=len(chapters),
-        chapters_done=len(chapters),
-    )
+
+    total_done = len(results) + len(completed_chapters)
+    if failed_chapter_count > 0:
+        await _mark_stage_run_failure(
+            db,
+            run,
+            chapters_total=len(chapters),
+            chapters_done=total_done,
+            error_message=f"{failed_chapter_count} chapter(s) failed during analysis",
+        )
+    else:
+        await _mark_stage_run_success(
+            db,
+            run,
+            chapters_total=len(chapters),
+            chapters_done=total_done,
+        )
     await _sync_stage_run_artifacts(
         request,
         novel_id,
