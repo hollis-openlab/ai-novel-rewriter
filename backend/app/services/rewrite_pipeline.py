@@ -759,6 +759,8 @@ def build_rewrite_prompt_bundle(
         "preceding_context": _trim_context(preceding_text, limit_chars=context_chars, tail=True),
         "following_context": _trim_context(following_text, limit_chars=context_chars, tail=False),
         "rewrite_mode": rewrite_mode or segment.strategy.value,
+        "target_chars_min": segment.target_chars_min,
+        "target_chars_max": segment.target_chars_max,
         "anchor": anchor.model_dump(mode="json"),
         "segment_scene_type": segment.scene_type,
         "segment_text": original_text,

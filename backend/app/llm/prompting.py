@@ -220,6 +220,10 @@ REWRITE_USER_TEMPLATE = """
 改写模式：
 {{ rewrite_mode }}
 
+{% if target_chars_min is defined and target_chars_max is defined %}
+目标字数范围：{{ target_chars_min }} ~ {{ target_chars_max }} 字（请尽量控制在此范围内）
+{% endif %}
+
 <rewrite_target>
 {{ window_text if window_text is defined else segment_text }}
 </rewrite_target>

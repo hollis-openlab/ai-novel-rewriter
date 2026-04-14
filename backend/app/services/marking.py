@@ -623,8 +623,11 @@ def _is_rewrite_applicable(scene: object, rule: RewriteRule) -> bool:
     return bool(getattr(rewrite_potential, "rewritable", False))
 
 
-def _estimate_target_chars(original_chars: int, target_ratio: float) -> tuple[int, int, int]:
-    target_chars = max(1, round(original_chars * target_ratio))
+def _estimate_target_chars(original_chars: int, target_ratio: float, explicit_target: int | None = None) -> tuple[int, int, int]:
+    if explicit_target is not None and explicit_target > 0:
+        target_chars = explicit_target
+    else:
+        target_chars = max(1, round(original_chars * target_ratio))
     buffer = max(1, round(target_chars * DEFAULT_CHAR_BUFFER_RATIO))
     return target_chars, max(1, target_chars - buffer), target_chars + buffer
 
@@ -972,7 +975,10 @@ def build_segment_from_scene(
     anchor = build_anchor(chapter, paragraph_range, context_window_size=context_window_size)
     _, range_text = _chapter_paragraph_text(chapter, paragraph_range)
     original_chars = len(range_text)
-    target_chars, target_chars_min, target_chars_max = _estimate_target_chars(original_chars, rewrite_rule.target_ratio)
+    target_chars, target_chars_min, target_chars_max = _estimate_target_chars(
+        original_chars, rewrite_rule.target_ratio,
+        explicit_target=getattr(rewrite_rule, "target_chars", None),
+    )
     rewrite_potential = getattr(scene, "rewrite_potential", None)
     suggestion = str(
         getattr(rewrite_potential, "suggestion", "") or f"{rewrite_rule.scene_type} 场景建议按 {rewrite_rule.primary_strategy} 处理"

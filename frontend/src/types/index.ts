@@ -524,6 +524,7 @@ export interface RewriteRule {
   strategy?: RewriteStrategy
   rewrite_guidance?: string
   target_ratio: number
+  target_chars?: number | null
   priority: number
   enabled: boolean
 }
@@ -534,6 +535,7 @@ export interface RewriteRuleInput {
   strategy: RewriteStrategy
   rewrite_guidance?: string
   target_ratio: number
+  target_chars?: number | null
   priority: number
   enabled: boolean
 }

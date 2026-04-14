@@ -996,6 +996,18 @@ export function Config() {
                         className="w-full rounded-xl border border-border bg-white px-3 py-2 text-body text-primary outline-none focus:border-accent"
                       />
                     </label>
+                    <label className="block">
+                      <span className="text-caption text-secondary">target_chars（可选，优先于 ratio）</span>
+                      <input
+                        type="number"
+                        min="1"
+                        step="100"
+                        value={rule.target_chars ?? ''}
+                        placeholder="留空则使用 ratio 计算"
+                        onChange={(e) => updateRewriteDraft(index, { target_chars: e.target.value ? Number(e.target.value) : null })}
+                        className="w-full rounded-xl border border-border bg-white px-3 py-2 text-body text-primary outline-none focus:border-accent"
+                      />
+                    </label>
                   </div>
 
                   <div className="space-y-2 rounded-xl border border-border bg-white p-3">
