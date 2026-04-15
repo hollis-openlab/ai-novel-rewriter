@@ -86,7 +86,7 @@ class RewriteRule(BaseModel):
     strategies: list[Literal["expand", "rewrite", "condense", "preserve"]] = Field(default_factory=list)
     rewrite_guidance: str = ""
     target_ratio: float = Field(gt=0)
-    target_chars: int | None = Field(default=None, ge=1)
+    target_chars: int = Field(default=2000, ge=1)
     priority: int = Field(default=0, ge=0)
     enabled: bool = True
 

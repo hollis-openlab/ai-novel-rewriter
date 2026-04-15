@@ -624,10 +624,12 @@ def _is_rewrite_applicable(scene: object, rule: RewriteRule) -> bool:
 
 
 def _estimate_target_chars(original_chars: int, target_ratio: float, explicit_target: int | None = None) -> tuple[int, int, int]:
+    ratio_based = max(1, round(original_chars * target_ratio))
     if explicit_target is not None and explicit_target > 0:
-        target_chars = explicit_target
+        # explicit_target acts as upper limit — cap ratio-based at it
+        target_chars = min(ratio_based, explicit_target)
     else:
-        target_chars = max(1, round(original_chars * target_ratio))
+        target_chars = ratio_based
     buffer = max(1, round(target_chars * DEFAULT_CHAR_BUFFER_RATIO))
     return target_chars, max(1, target_chars - buffer), target_chars + buffer
 

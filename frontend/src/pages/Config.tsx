@@ -1002,9 +1002,9 @@ export function Config() {
                         type="number"
                         min="1"
                         step="100"
-                        value={rule.target_chars ?? ''}
-                        placeholder="留空则使用 ratio 计算"
-                        onChange={(e) => updateRewriteDraft(index, { target_chars: e.target.value ? Number(e.target.value) : null })}
+                        value={rule.target_chars ?? 2000}
+                        placeholder="默认 2000"
+                        onChange={(e) => updateRewriteDraft(index, { target_chars: e.target.value ? Number(e.target.value) : 2000 })}
                         className="w-full rounded-xl border border-border bg-white px-3 py-2 text-body text-primary outline-none focus:border-accent"
                       />
                     </label>
