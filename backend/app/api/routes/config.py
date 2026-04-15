@@ -75,6 +75,7 @@ class RewriteRuleCreateRequest(BaseModel):
     strategy: str | None = None
     rewrite_guidance: str = Field(default="")
     target_ratio: float = Field(gt=0)
+    target_chars: int = Field(default=2000, ge=1)
     priority: int = Field(default=0, ge=0)
     enabled: bool = True
 
