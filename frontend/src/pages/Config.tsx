@@ -41,6 +41,7 @@ type RewriteRuleForm = {
   strategies: RewriteStrategy[]
   rewrite_guidance: string
   target_ratio: string
+  target_chars: number
   priority: string
   enabled: boolean
   isNew?: boolean
@@ -108,6 +109,7 @@ const normalizeRewriteRule = (rule: RewriteRule): RewriteRuleForm => ({
   strategies: normalizeRewriteStrategies(rule.strategies, rule.strategy),
   rewrite_guidance: rule.rewrite_guidance ?? '',
   target_ratio: String(rule.target_ratio ?? 1),
+  target_chars: rule.target_chars ?? 2000,
   priority: String(rule.priority ?? 0),
   enabled: rule.enabled,
 })
