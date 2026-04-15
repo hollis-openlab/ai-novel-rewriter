@@ -221,7 +221,7 @@ REWRITE_USER_TEMPLATE = """
 {{ rewrite_mode }}
 
 {% if target_chars_min is defined and target_chars_max is defined %}
-目标字数范围：{{ target_chars_min }} ~ {{ target_chars_max }} 字（请尽量控制在此范围内）
+改写后总字数范围：{{ target_chars_min }} ~ {{ target_chars_max }} 字（原文 {{ original_chars }} 字，请控制在此范围内）
 {% endif %}
 
 <rewrite_target>

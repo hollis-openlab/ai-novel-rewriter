@@ -623,11 +623,11 @@ def _is_rewrite_applicable(scene: object, rule: RewriteRule) -> bool:
     return bool(getattr(rewrite_potential, "rewritable", False))
 
 
-def _estimate_target_chars(original_chars: int, target_ratio: float, explicit_target: int | None = None) -> tuple[int, int, int]:
+def _estimate_target_chars(original_chars: int, target_ratio: float, added_chars_limit: int | None = None) -> tuple[int, int, int]:
     ratio_based = max(1, round(original_chars * target_ratio))
-    if explicit_target is not None and explicit_target > 0:
-        # explicit_target acts as upper limit — cap ratio-based at it
-        target_chars = min(ratio_based, explicit_target)
+    if added_chars_limit is not None and added_chars_limit > 0:
+        # added_chars_limit caps how many chars can be ADDED beyond original
+        target_chars = min(ratio_based, original_chars + added_chars_limit)
     else:
         target_chars = ratio_based
     buffer = max(1, round(target_chars * DEFAULT_CHAR_BUFFER_RATIO))
@@ -979,7 +979,7 @@ def build_segment_from_scene(
     original_chars = len(range_text)
     target_chars, target_chars_min, target_chars_max = _estimate_target_chars(
         original_chars, rewrite_rule.target_ratio,
-        explicit_target=getattr(rewrite_rule, "target_chars", None),
+        added_chars_limit=getattr(rewrite_rule, "target_chars", None),
     )
     rewrite_potential = getattr(scene, "rewrite_potential", None)
     suggestion = str(

@@ -997,7 +997,7 @@ export function Config() {
                       />
                     </label>
                     <label className="block">
-                      <span className="text-caption text-secondary">target_chars（可选，优先于 ratio）</span>
+                      <span className="text-caption text-secondary">target_chars（目标新增字数上限）</span>
                       <input
                         type="number"
                         min="1"
