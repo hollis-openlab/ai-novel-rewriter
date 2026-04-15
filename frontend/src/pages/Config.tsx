@@ -333,6 +333,7 @@ export function Config() {
         strategy: getPrimaryRewriteStrategy(strategies),
         rewrite_guidance: payload.rewrite_guidance.trim(),
         target_ratio: parseNumber(payload.target_ratio, 1),
+        target_chars: payload.target_chars ?? 2000,
         priority: Math.max(0, parseInt(payload.priority || '0', 10) || 0),
         enabled: payload.enabled,
       }
@@ -577,11 +578,14 @@ export function Config() {
     const baselineStrategies = normalizeRewriteStrategies(baseline.strategies, baseline.strategy)
     const nextTargetRatio = parseNumber(rule.target_ratio, 1)
     const nextPriority = Math.max(0, parseInt(rule.priority || '0', 10) || 0)
+    const nextTargetChars = rule.target_chars ?? 2000
+    const baselineTargetChars = baseline.target_chars ?? 2000
     return !(
       baseline.scene_type === nextSceneType &&
       arrayShallowEqual(baselineStrategies, nextStrategies) &&
       (baseline.rewrite_guidance ?? '') === rule.rewrite_guidance.trim() &&
       baseline.target_ratio === nextTargetRatio &&
+      baselineTargetChars === nextTargetChars &&
       baseline.priority === nextPriority &&
       baseline.enabled === rule.enabled
     )
