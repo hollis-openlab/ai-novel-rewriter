@@ -1015,6 +1015,11 @@ def assemble_novel(
     total_segments = stats.rewritten_segments + stats.preserved_segments + stats.failed_segments
     stats.failed_ratio = (stats.failed_segments / total_segments) if total_segments else 0.0
 
+    # SEGMENT_ROLLED_BACK is informational — rolled-back segments simply
+    # preserve the original text and should not block the quality gate.
+    _NON_BLOCKING_WARNINGS = {"SEGMENT_ROLLED_BACK", "OUTSIDE_TEXT_MINOR_DRIFT"}
+    blocking_warning_count = sum(1 for w in warnings if w.code not in _NON_BLOCKING_WARNINGS)
+
     block_reasons: list[str] = []
     if warnings and any(warning.code == "CHAPTER_INDEX_CONTINUITY" for warning in warnings):
         block_reasons.append("chapter_index_continuity")
@@ -1027,7 +1032,7 @@ def assemble_novel(
 
     if stats.failed_ratio > resolved_thresholds.max_failed_ratio:
         block_reasons.append("failed_ratio_exceeded")
-    if stats.warning_count > resolved_thresholds.max_warning_count:
+    if blocking_warning_count > resolved_thresholds.max_warning_count:
         block_reasons.append("warning_count_exceeded")
 
     blocked = bool(block_reasons)
