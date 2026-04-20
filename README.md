@@ -29,16 +29,16 @@
 
 ```bash
 # 克隆项目
-git clone <repo-url> && cd AI-novel
-
-# 复制环境变量
-cp .env.example .env
+git clone https://github.com/hollis-openlab/ai-novel-rewriter.git && cd ai-novel-rewriter
 
 # 启动
 docker compose up -d
 
 # 访问 http://localhost:8899
 ```
+
+> LLM Provider（API Key、Base URL）在应用内的「设置」页面配置，无需环境变量。
+> 如需自定义端口、数据目录等服务配置，可 `cp .env.example .env` 后修改。
 
 ### 本地开发
 
