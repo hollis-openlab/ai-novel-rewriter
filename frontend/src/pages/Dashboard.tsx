@@ -137,37 +137,97 @@ interface NovelRowProps {
   progressMap: Record<string, { stage: string; percent: number }>
 }
 
-function NovelRow({ novel, progressMap }: NovelRowProps) {
-  const navigate = useNavigate()
+const DASHBOARD_STAGES = ['import', 'split', 'analyze', 'rewrite', 'assemble'] as const
+
+type PipelineStageInfo = {
+  status?: string
+  chapters_total?: number
+  chapters_done?: number
+  completed_at?: string | null
+}
+
+export function normalizePipelineStageStatus(stage: PipelineStageInfo | undefined): string {
+  if (!stage) return 'pending'
+  const raw = stage.status ?? 'pending'
+  const total = Math.max(0, Number(stage.chapters_total ?? 0))
+  const done = Math.max(0, Number(stage.chapters_done ?? 0))
+
+  if ((raw === 'paused' || raw === 'stale') && total > 0 && done >= total) {
+    return 'completed'
+  }
+  if (raw === 'stale') {
+    if (done > 0 || stage.completed_at) return 'paused'
+    return 'pending'
+  }
+  return raw
+}
+
+export function deriveNovelStatus(novel: Novel, progressMap: Record<string, { stage: string; percent: number }>) {
   const prog = progressMap[novel.id]
-  const [hovered, setHovered] = useState(false)
-
-  // Derive status from pipeline_status if available (NovelDetail shape), else keep pending
-  const pipelineStatus = novel.pipeline_status
-  let status = 'pending'
-  let activeStage: string | undefined
-  let activePct: number | undefined
-
   if (prog) {
-    status = 'running'
-    activeStage = prog.stage
-    activePct = prog.percent
-  } else if (pipelineStatus) {
-    const stages = ['import', 'split', 'analyze', 'mark', 'rewrite', 'assemble']
-    const running = stages.find(s => pipelineStatus[s]?.status === 'running')
-    const failed = stages.find(s => pipelineStatus[s]?.status === 'failed')
-    const completed = stages.every(s => pipelineStatus[s]?.status === 'completed')
-    if (running) {
-      status = 'running'
-      activeStage = running
-      const info = pipelineStatus[running]
-      activePct = info.chapters_total > 0 ? (info.chapters_done / info.chapters_total) * 100 : 0
-    } else if (failed) {
-      status = 'failed'
-    } else if (completed) {
-      status = 'completed'
+    return {
+      status: 'running' as const,
+      stage: prog.stage,
+      percent: prog.percent,
     }
   }
+
+  const pipelineStatus = novel.pipeline_status as Record<string, PipelineStageInfo> | undefined
+  if (!pipelineStatus) {
+    return {
+      status: 'pending' as const,
+      stage: undefined,
+      percent: undefined,
+    }
+  }
+
+  const normalized = DASHBOARD_STAGES.map((stage) => ({
+    stage,
+    status: normalizePipelineStageStatus(pipelineStatus[stage]),
+    info: pipelineStatus[stage],
+  }))
+
+  const runningStage = normalized.find((item) => item.status === 'running')
+  if (runningStage) {
+    const total = Math.max(0, Number(runningStage.info?.chapters_total ?? 0))
+    const done = Math.max(0, Number(runningStage.info?.chapters_done ?? 0))
+    return {
+      status: 'running' as const,
+      stage: runningStage.stage,
+      percent: total > 0 ? (done / total) * 100 : 0,
+    }
+  }
+
+  if (normalized.some((item) => item.status === 'failed')) {
+    return {
+      status: 'failed' as const,
+      stage: undefined,
+      percent: undefined,
+    }
+  }
+
+  if (normalized.every((item) => item.status === 'completed')) {
+    return {
+      status: 'completed' as const,
+      stage: undefined,
+      percent: undefined,
+    }
+  }
+
+  return {
+    status: 'pending' as const,
+    stage: undefined,
+    percent: undefined,
+  }
+}
+
+function NovelRow({ novel, progressMap }: NovelRowProps) {
+  const navigate = useNavigate()
+  const [hovered, setHovered] = useState(false)
+  const derived = deriveNovelStatus(novel, progressMap)
+  const status = derived.status
+  const activeStage = derived.stage
+  const activePct = derived.percent
 
   return (
     <div
@@ -538,22 +598,20 @@ export function Dashboard() {
   })
 
   // Derived counts
-  const processingCount = novels.filter(n => {
-    const ps = n.pipeline_status as Record<string, { status: string }> | undefined
-    return ps ? Object.values(ps).some(v => v.status === 'running') : false
-  }).length + Object.keys(progressMap).length
+  const statusSummary = novels.reduce(
+    (acc, novel) => {
+      const status = deriveNovelStatus(novel, progressMap).status
+      if (status === 'running') acc.processing += 1
+      else if (status === 'completed') acc.completed += 1
+      else if (status === 'failed') acc.failed += 1
+      return acc
+    },
+    { processing: 0, completed: 0, failed: 0 }
+  )
 
-  const completedCount = novels.filter(n => {
-    const ps = n.pipeline_status as Record<string, { status: string }> | undefined
-    if (!ps) return false
-    return Object.values(ps).every(v => v.status === 'completed')
-  }).length
-
-  const failedCount = novels.filter(n => {
-    const ps = n.pipeline_status as Record<string, { status: string }> | undefined
-    if (!ps) return false
-    return Object.values(ps).some(v => v.status === 'failed')
-  }).length
+  const processingCount = statusSummary.processing
+  const completedCount = statusSummary.completed
+  const failedCount = statusSummary.failed
 
   // WebSocket subscription
   const addActivity = useCallback((ev: ActivityEvent) => {
