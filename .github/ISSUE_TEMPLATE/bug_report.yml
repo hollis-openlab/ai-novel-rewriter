@@ -1,0 +1,38 @@
+name: Bug 报告
+description: 报告一个问题
+labels: ["bug"]
+body:
+  - type: textarea
+    id: description
+    attributes:
+      label: 问题描述
+      description: 清晰描述遇到的问题
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: 复现步骤
+      value: |
+        1.
+        2.
+        3.
+  - type: textarea
+    id: expected
+    attributes:
+      label: 期望行为
+  - type: input
+    id: novel-id
+    attributes:
+      label: 小说 ID（如适用）
+  - type: dropdown
+    id: stage
+    attributes:
+      label: 出问题的阶段
+      options:
+        - 导入/分章
+        - 分析/标记
+        - 改写
+        - 组装/导出
+        - 前端界面
+        - 其他
