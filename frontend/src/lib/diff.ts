@@ -228,12 +228,12 @@ function pairRows(lines: DiffLine[]): DiffRow[] {
 
 function summarizeGroup(lines: DiffLine[], kind: DiffGroupKind): string {
   if (kind === 'equal') {
-    return `省略 ${lines.length} 行未变内容`
+    return `${lines.length} unchanged lines omitted`
   }
 
   const deleted = lines.filter((line) => line.kind === 'delete').length
   const inserted = lines.filter((line) => line.kind === 'insert').length
-  return `删除 ${deleted} 行，新增 ${inserted} 行`
+  return `${deleted} deleted, ${inserted} inserted`
 }
 
 function countGroupLines(lines: DiffLine[], kind: DiffLineKind): number {

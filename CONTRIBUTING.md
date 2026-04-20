@@ -1,60 +1,62 @@
-# 贡献指南
+[中文](CONTRIBUTING_zh.md)
 
-感谢你对 AI Novel 项目的兴趣！
+# Contributing Guide
 
-## 开发环境搭建
+Thank you for your interest in the AI Novel project!
 
-### 前置要求
+## Setting Up the Development Environment
+
+### Prerequisites
 
 - Python 3.13+
 - Node.js 20+
-- [uv](https://docs.astral.sh/uv/) — Python 包管理
-- npm — Node 包管理
+- [uv](https://docs.astral.sh/uv/) — Python package manager
+- npm — Node package manager
 
-### 启动开发环境
+### Start the Development Environment
 
 ```bash
-# 克隆项目
-git clone <repo-url> && cd AI-novel
+# Clone the project
+git clone https://github.com/hollis-openlab/ai-novel-rewriter.git && cd ai-novel-rewriter
 
-# 一键启动前后端
+# Start frontend and backend
 ./start.sh
 ```
 
-后端运行在 `http://localhost:8899`，前端运行在 `http://localhost:5173`。
+Backend runs at `http://localhost:8899`, frontend at `http://localhost:5173`.
 
-### 运行测试
+### Running Tests
 
 ```bash
-# 后端测试
+# Backend tests
 uv run pytest backend/tests/ -v
 
-# 前端测试
+# Frontend tests
 cd frontend && npm test
 ```
 
-## 提交代码
+## Submitting Code
 
-1. Fork 项目并创建你的分支 (`git checkout -b feature/xxx`)
-2. 确保测试通过 (`uv run pytest backend/tests/ -v`)
-3. 提交变更 (`git commit -m 'feat: xxx'`)
-4. 推送分支 (`git push origin feature/xxx`)
-5. 创建 Pull Request
+1. Fork the project and create your branch (`git checkout -b feature/xxx`)
+2. Make sure tests pass (`uv run pytest backend/tests/ -v`)
+3. Commit your changes (`git commit -m 'feat: xxx'`)
+4. Push the branch (`git push origin feature/xxx`)
+5. Create a Pull Request
 
-### Commit 规范
+### Commit Convention
 
-使用 [Conventional Commits](https://www.conventionalcommits.org/) 格式：
+Use [Conventional Commits](https://www.conventionalcommits.org/) format:
 
-- `feat:` 新功能
-- `fix:` Bug 修复
-- `refactor:` 重构
-- `docs:` 文档
-- `test:` 测试
-- `chore:` 构建/工具链
+- `feat:` New feature
+- `fix:` Bug fix
+- `refactor:` Refactoring
+- `docs:` Documentation
+- `test:` Tests
+- `chore:` Build/toolchain
 
-### 注意事项
+### Notes
 
-- 不要提交 `data/` 目录下的任何文件
-- 不要提交 `.env` 文件或 API Key
-- 改动后端代码后确保现有测试通过
-- 新功能请附带测试
+- Do not commit any files under the `data/` directory
+- Do not commit `.env` files or API keys
+- Ensure existing tests pass after modifying backend code
+- New features should include tests

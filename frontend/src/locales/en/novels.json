@@ -1,0 +1,17 @@
+{
+  "title": "Novel Management",
+  "subtitle": "Manage imported novels — open details or delete.",
+  "importButton": "Import Novel",
+  "empty": "No novels yet",
+  "emptyHint": "Click [Import Novel] in the top-right to get started.",
+  "chapterCount": "{{count}} chapters",
+  "view": "View",
+  "deleting": "Deleting",
+  "confirmDelete": "Delete \"{{title}}\"? This action cannot be undone.",
+  "deleted": "Deleted \"{{title}}\"",
+  "deletedNovel": "Novel deleted",
+  "deleteFailed": "Delete failed, please retry",
+  "modal": {
+    "title": "Import Novel"
+  }
+}

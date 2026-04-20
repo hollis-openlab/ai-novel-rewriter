@@ -1,114 +1,116 @@
-# AI Novel - 小说智能改写工具
+[中文](README_zh.md)
 
-基于 LLM 的小说内容分析、标记和智能改写管道。导入小说原文后，自动分析场景、标记改写点，按照大纲约束逐段改写并自动 Review，最终组装导出。
+# AI Novel - Intelligent Novel Rewriting Tool
 
-## 功能特点
+An LLM-powered pipeline for novel content analysis, marking, and intelligent rewriting. Import your novel, and the system automatically analyzes scenes, marks rewrite targets, rewrites segment by segment with outline constraints and auto-review, then assembles the final output.
 
-- **小说导入与自动分章** — 支持 TXT 格式导入，自动识别章节边界并分章
-- **智能场景分析** — 基于可配置的场景规则，自动识别场景类型、人物状态、关键事件
-- **自动标记改写片段** — 根据分析结果和改写规则，标记需要改写的片段，支持扩写/改写/缩写/保留等策略
-- **章节改写大纲** — 改写前为每章生成叙事大纲，明确每个片段的职责和边界，防止剧情超跑
-- **串行改写 + 滚动上下文** — 逐段改写，每段能看到前面已改写的内容，保证段落间连贯性
-- **改写后自动 Review** — 改写完成后自动检测剧情超跑问题，定位问题段落并局部修复
-- **结果组装与导出** — 将改写结果与原文组装，支持导出为 TXT/EPUB 格式
-- **实时进度** — WebSocket 推送改写进度，前端实时展示每章每阶段状态
-- **多 Provider 支持** — 支持任意 OpenAI 兼容 API（DeepSeek、硅基流动等）
+## Features
 
-## 技术栈
+- **Novel Import & Auto-Splitting** — Import TXT format, automatically detect chapter boundaries
+- **Intelligent Scene Analysis** — Configurable scene rules to identify scene types, character states, and key events
+- **Auto-Mark Rewrite Segments** — Mark segments for rewriting based on analysis and rewrite rules; supports expand/rewrite/condense/preserve strategies
+- **Chapter Rewrite Outline** — Generate a narrative outline per chapter before rewriting, defining each segment's role and boundaries to prevent plot drift
+- **Serial Rewrite + Rolling Context** — Rewrite segment by segment, each seeing previously rewritten content for coherence
+- **Auto-Review After Rewrite** — Automatically detect plot drift issues, locate problematic segments, and apply targeted fixes
+- **Result Assembly & Export** — Assemble rewritten results with originals, export as TXT/EPUB
+- **Real-time Progress** — WebSocket-pushed progress updates, live per-chapter/per-stage status on the frontend
+- **Multi-Provider Support** — Works with any OpenAI-compatible API (DeepSeek, SiliconFlow, etc.)
 
-| 层 | 技术 |
-|---|------|
-| 后端 | Python 3.13+, FastAPI, SQLAlchemy, SQLite |
-| 前端 | React 19, TypeScript 5, Vite 6, TanStack Query |
-| 部署 | Docker Compose |
-| 依赖管理 | uv (Python), npm (Node) |
+## Tech Stack
 
-## 快速开始
+| Layer | Technology |
+|-------|-----------|
+| Backend | Python 3.13+, FastAPI, SQLAlchemy, SQLite |
+| Frontend | React 19, TypeScript 5, Vite 6, TanStack Query |
+| Deployment | Docker Compose |
+| Package Managers | uv (Python), npm (Node) |
 
-### Docker 部署（推荐）
+## Quick Start
+
+### Docker Deployment (Recommended)
 
 ```bash
-# 克隆项目
+# Clone the project
 git clone https://github.com/hollis-openlab/ai-novel-rewriter.git && cd ai-novel-rewriter
 
-# 启动
+# Start
 docker compose up -d
 
-# 访问 http://localhost:8899
+# Visit http://localhost:8899
 ```
 
-> LLM Provider（API Key、Base URL）在应用内的「设置」页面配置，无需环境变量。
-> 如需自定义端口、数据目录等服务配置，可 `cp .env.example .env` 后修改。
+> LLM Provider settings (API Key, Base URL) are configured in the app's Settings page — no environment variables needed.
+> For custom port, data directory, or other service configs, run `cp .env.example .env` and edit as needed.
 
-### 本地开发
+### Local Development
 
-**前置要求**: Python 3.13+, Node.js 20+, [uv](https://docs.astral.sh/uv/)
+**Prerequisites**: Python 3.13+, Node.js 20+, [uv](https://docs.astral.sh/uv/)
 
 ```bash
-# 安装依赖并启动（前后端同时）
+# Install dependencies and start (frontend + backend)
 ./start.sh
 
-# 后端: http://localhost:8899
-# 前端: http://localhost:5173
+# Backend: http://localhost:8899
+# Frontend: http://localhost:5173
 ```
 
-停止服务：
+Stop services:
 
 ```bash
 ./stop.sh
 ```
 
-### 环境变量
+### Environment Variables
 
-参考 `.env.example`，主要配置项：
+See `.env.example` for reference:
 
-| 变量 | 默认值 | 说明 |
-|------|--------|------|
-| `AI_NOVEL_PORT` | 8899 | 后端服务端口 |
-| `AI_NOVEL_DATA_DIR` | data | 数据存储目录 |
-| `AI_NOVEL_CORS_ORIGINS` | localhost:5173 | CORS 允许域名（逗号分隔） |
-| `AI_NOVEL_LLM_TIMEOUT_SECONDS` | 600 | LLM 请求超时（秒） |
-| `AI_NOVEL_DEBUG` | false | 调试模式 |
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `AI_NOVEL_PORT` | 8899 | Backend service port |
+| `AI_NOVEL_DATA_DIR` | data | Data storage directory |
+| `AI_NOVEL_CORS_ORIGINS` | localhost:5173 | CORS allowed origins (comma-separated) |
+| `AI_NOVEL_LLM_TIMEOUT_SECONDS` | 600 | LLM request timeout (seconds) |
+| `AI_NOVEL_DEBUG` | false | Debug mode |
 
-LLM Provider 的 API Key 和 Base URL 在应用内的「设置」页面配置。
+LLM Provider API Key and Base URL are configured in the app's Settings page.
 
-## 项目结构
+## Project Structure
 
 ```
 AI-novel/
-├── backend/           # FastAPI 后端
+├── backend/           # FastAPI backend
 │   ├── app/
-│   │   ├── api/       # API 路由
-│   │   ├── services/  # 核心管道（分析、标记、大纲、改写、审核、组装）
-│   │   ├── llm/       # LLM 客户端和 Prompt 模板
-│   │   ├── models/    # 数据模型
-│   │   └── db/        # 数据库模型和连接
-│   └── tests/         # 后端测试
-├── frontend/          # React 前端
+│   │   ├── api/       # API routes
+│   │   ├── services/  # Core pipeline (analyze, mark, outline, rewrite, review, assemble)
+│   │   ├── llm/       # LLM client and prompt templates
+│   │   ├── models/    # Data models
+│   │   └── db/        # Database models and connections
+│   └── tests/         # Backend tests
+├── frontend/          # React frontend
 │   └── src/
-│       ├── pages/     # 页面组件
-│       ├── components/# 通用组件
-│       └── lib/       # API 客户端、WebSocket
-├── docker-compose.yml # 生产部署
-├── start.sh           # 本地开发启动脚本
-└── stop.sh            # 本地开发停止脚本
+│       ├── pages/     # Page components
+│       ├── components/# Shared components
+│       └── lib/       # API client, WebSocket
+├── docker-compose.yml # Production deployment
+├── start.sh           # Local dev start script
+└── stop.sh            # Local dev stop script
 ```
 
-## 改写管道流程
+## Rewrite Pipeline
 
 ```
-导入 → 分章 → 分析 → 标记 → 改写 → 组装
-                              ↓
-                     [生成大纲 → 串行改写 → Review → 修复]
+Import → Split → Analyze → Mark → Rewrite → Assemble
+                                    ↓
+                           [Outline → Serial Rewrite → Review → Fix]
 ```
 
-## 运行测试
+## Running Tests
 
 ```bash
-# 后端
+# Backend
 uv run pytest backend/tests/ -v
 
-# 前端
+# Frontend
 cd frontend && npm test
 ```
 

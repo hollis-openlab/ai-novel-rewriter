@@ -10,6 +10,8 @@ import {
   Sun
 } from 'lucide-react'
 import { useWorkerStore } from '../../stores'
+import { LanguageSwitcher } from '../LanguageSwitcher'
+import { useTranslation } from 'react-i18next'
 import { clsx } from 'clsx'
 
 interface SidebarProps {
@@ -20,14 +22,15 @@ interface SidebarProps {
 }
 
 const navItems = [
-  { path: '/', icon: LayoutDashboard, label: 'Dashboard', label_zh: '仪表盘' },
-  { path: '/novels', icon: BookOpen, label: 'Novels', label_zh: '小说管理' },
-  { path: '/config', icon: Settings, label: 'Config', label_zh: '配置' },
-  { path: '/providers', icon: Server, label: 'Providers', label_zh: '模型配置' },
+  { path: '/', icon: LayoutDashboard, labelKey: 'nav.dashboard' },
+  { path: '/novels', icon: BookOpen, labelKey: 'nav.novels' },
+  { path: '/config', icon: Settings, labelKey: 'nav.config' },
+  { path: '/providers', icon: Server, labelKey: 'nav.providers' },
 ]
 
 export function Sidebar({ collapsed, onToggleCollapse, darkMode, onToggleDarkMode }: SidebarProps) {
   const { active, idle, queue_size } = useWorkerStore()
+  const { t } = useTranslation('common')
 
   return (
     <div className={clsx(
@@ -49,7 +52,7 @@ export function Sidebar({ collapsed, onToggleCollapse, darkMode, onToggleDarkMod
           <button
             onClick={onToggleDarkMode}
             className="p-2 rounded-lg hover:bg-subtle dark:hover:bg-dark-subtle transition-colors duration-150 cursor-pointer"
-            title={darkMode ? '切换到浅色模式' : '切换到深色模式'}
+            title={darkMode ? t('theme.switchToLight') : t('theme.switchToDark')}
           >
             {darkMode ? (
               <Sun className="w-4 h-4 text-secondary dark:text-dark-secondary" strokeWidth={1.5} />
@@ -96,7 +99,7 @@ export function Sidebar({ collapsed, onToggleCollapse, darkMode, onToggleDarkMod
             />
             {!collapsed && (
               <span className="text-body font-medium">
-                {item.label_zh}
+                {t(item.labelKey)}
               </span>
             )}
           </NavLink>
@@ -113,7 +116,7 @@ export function Sidebar({ collapsed, onToggleCollapse, darkMode, onToggleDarkMod
             <button
               onClick={onToggleDarkMode}
               className="p-2 rounded-lg hover:bg-subtle dark:hover:bg-dark-subtle transition-colors duration-150 cursor-pointer"
-              title={darkMode ? '切换到浅色模式' : '切换到深色模式'}
+              title={darkMode ? t('theme.switchToLight') : t('theme.switchToDark')}
             >
               {darkMode ? (
                 <Sun className="w-4 h-4 text-secondary dark:text-dark-secondary" strokeWidth={1.5} />
@@ -121,12 +124,16 @@ export function Sidebar({ collapsed, onToggleCollapse, darkMode, onToggleDarkMod
                 <Moon className="w-4 h-4 text-secondary dark:text-dark-secondary" strokeWidth={1.5} />
               )}
             </button>
+            <LanguageSwitcher collapsed />
           </div>
         ) : (
           <div className="space-y-3">
-            <h3 className="text-caption font-semibold text-secondary uppercase tracking-wide">
-              Worker Pool
-            </h3>
+            <div className="flex items-center justify-between">
+              <h3 className="text-caption font-semibold text-secondary uppercase tracking-wide">
+                Worker Pool
+              </h3>
+              <LanguageSwitcher />
+            </div>
 
             <div className="space-y-2">
               <div className="flex justify-between items-center">

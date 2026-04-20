@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { useNavigate, useParams } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import {
   ArrowLeft,
   Check,
@@ -30,15 +31,17 @@ import { buildPromptClipboardText, detectPromptLayout, formatPromptLogTokens, pr
 import type { PromptLogEntry, PromptLogRetryResponse } from '@/types/prompt-log'
 import type { RewriteSegment } from '@/types'
 
-const SCENE_COLORS: Record<string, { bg: string; border: string; name: string }> = {
-  '战斗': { bg: 'bg-scene-combat', border: '#EF4444', name: '战斗' },
-  '对话': { bg: 'bg-scene-dialogue', border: '#3B82F6', name: '对话' },
-  '心理描写': { bg: 'bg-scene-psychology', border: '#8B5CF6', name: '心理' },
-  '环境描写': { bg: 'bg-scene-environment', border: '#22C55E', name: '环境' },
-  '叙事过渡': { bg: 'bg-scene-narration', border: '#94A3B8', name: '叙事' },
-  '感情互动': { bg: 'bg-scene-romance', border: '#F43F5E', name: '感情' },
-  '回忆闪回': { bg: 'bg-scene-flashback', border: '#F59E0B', name: '回忆' },
-  '日常生活': { bg: 'bg-scene-daily', border: '#0EA5E9', name: '日常' },
+// Scene color config — keys match API scene_type values (Chinese), kept as-is for lookup.
+// The `name` field is a translation key suffix used with t('chapterEditor:sceneNames.<key>')
+const SCENE_COLORS: Record<string, { bg: string; border: string; nameKey: string }> = {
+  '战斗': { bg: 'bg-scene-combat', border: '#EF4444', nameKey: 'combat' },
+  '对话': { bg: 'bg-scene-dialogue', border: '#3B82F6', nameKey: 'dialogue' },
+  '心理描写': { bg: 'bg-scene-psychology', border: '#8B5CF6', nameKey: 'psychology' },
+  '环境描写': { bg: 'bg-scene-environment', border: '#22C55E', nameKey: 'environment' },
+  '叙事过渡': { bg: 'bg-scene-narration', border: '#94A3B8', nameKey: 'narration' },
+  '感情互动': { bg: 'bg-scene-romance', border: '#F43F5E', nameKey: 'romance' },
+  '回忆闪回': { bg: 'bg-scene-flashback', border: '#F59E0B', nameKey: 'flashback' },
+  '日常生活': { bg: 'bg-scene-daily', border: '#0EA5E9', nameKey: 'daily' },
 }
 
 const STAGE_KEYS = ['split', 'analyze', 'mark', 'rewrite', 'assemble'] as const
@@ -97,18 +100,18 @@ function getParagraphRangeText(paragraphs: string[], range: [number, number]): s
   return paragraphs.slice(start - 1, end).join('\n\n')
 }
 
-function reviewStatusLabel(status: ReviewStatus): string {
+function reviewStatusLabel(status: ReviewStatus, t: (key: string) => string): string {
   switch (status) {
     case 'accepted':
-      return '已采纳'
+      return t('chapterEditor:reviewStatus.accepted')
     case 'accepted_edited':
-      return '已编辑采纳'
+      return t('chapterEditor:reviewStatus.acceptedEdited')
     case 'rejected':
-      return '已拒绝'
+      return t('chapterEditor:reviewStatus.rejected')
     case 'regenerating':
-      return '重写中'
+      return t('chapterEditor:reviewStatus.regenerating')
     default:
-      return '待处理'
+      return t('chapterEditor:reviewStatus.pending')
   }
 }
 
@@ -148,6 +151,7 @@ function segmentDefaultState(segment: RewriteSegment): SegmentState {
 }
 
 export function ChapterEditor() {
+  const { t } = useTranslation(['chapterEditor', 'common'])
   const { id: novelId, chapterId } = useParams<{ id: string; chapterId: string }>()
   const navigate = useNavigate()
   const chapterIdx = Number.isFinite(Number(chapterId)) ? Number(chapterId) : 0
@@ -377,16 +381,16 @@ export function ChapterEditor() {
                 P{segment.paragraph_range[0]}-{segment.paragraph_range[1]}
               </span>
               <span className="text-caption px-2 py-0.5 rounded-full bg-subtle text-secondary">
-                {segment.source === 'manual' ? '手动' : '自动'}
+                {segment.source === 'manual' ? t('chapterEditor:segment.sourceManual') : t('chapterEditor:segment.sourceAuto')}
               </span>
-              {segment.confirmed && <span className="text-caption px-2 py-0.5 rounded-full bg-success/10 text-success">已确认</span>}
+              {segment.confirmed && <span className="text-caption px-2 py-0.5 rounded-full bg-success/10 text-success">{t('chapterEditor:segment.confirmed')}</span>}
             </div>
             <p className="mt-1 text-callout font-medium text-primary truncate">
-              {segment.scene_type || '未命名分段'}
+              {segment.scene_type || t('chapterEditor:segment.unnamed')}
             </p>
           </div>
           <span className={`shrink-0 text-caption px-2 py-0.5 rounded-full border ${reviewStatusClass(state.status)}`}>
-            {reviewStatusLabel(state.status)}
+            {reviewStatusLabel(state.status, t)}
           </span>
         </button>
 
@@ -395,10 +399,10 @@ export function ChapterEditor() {
             <div className="space-y-2">
               <div className="flex items-center gap-2 text-caption font-semibold text-secondary uppercase tracking-wide">
                 <FileText className="w-3.5 h-3.5" />
-                原文
+                {t('chapterEditor:segment.originalLabel')}
               </div>
               <div className="rounded-xl bg-subtle p-3 text-body leading-7 text-primary whitespace-pre-wrap min-h-[120px] max-h-[220px] overflow-y-auto">
-                {originalText || '暂无原文可显示'}
+                {originalText || t('chapterEditor:segment.noOriginalText')}
               </div>
             </div>
 
@@ -406,7 +410,7 @@ export function ChapterEditor() {
               <div className="flex items-center justify-between gap-2">
                 <div className="flex items-center gap-2 text-caption font-semibold text-secondary uppercase tracking-wide">
                   <Sparkles className="w-3.5 h-3.5" />
-                  改写稿
+                  {t('chapterEditor:segment.rewriteLabel')}
                 </div>
                 <button
                   type="button"
@@ -414,7 +418,7 @@ export function ChapterEditor() {
                   className="inline-flex items-center gap-1.5 text-caption text-accent hover:underline cursor-pointer"
                 >
                   <Pencil className="w-3.5 h-3.5" />
-                  {state.editing ? '收起编辑' : '编辑'}
+                  {state.editing ? t('chapterEditor:segment.collapseEdit') : t('common:action.edit')}
                 </button>
               </div>
 
@@ -422,18 +426,18 @@ export function ChapterEditor() {
                 <textarea
                   value={state.draftText}
                   onChange={(event) => updateSegmentState(segment.segment_id, { draftText: event.target.value })}
-                  placeholder="在这里输入或修改改写文本，然后保存为 accepted_edited"
+                  placeholder={t('chapterEditor:segment.editPlaceholder')}
                   className="min-h-[160px] w-full rounded-xl border border-border bg-white px-3 py-3 text-body leading-7 text-primary outline-none transition-colors placeholder:text-tertiary focus:border-accent focus:ring-2 focus:ring-accent/10"
                 />
               ) : (
                 <div className="rounded-xl border border-dashed border-border bg-white px-3 py-3 text-body leading-7 text-secondary min-h-[160px]">
-                  点击“编辑”后即可输入改写文本
+                  {t('chapterEditor:segment.clickToEdit')}
                 </div>
               )}
 
               {segment.suggestion && (
                 <div className="rounded-xl border border-warning/20 bg-warning/10 px-3 py-2 text-caption leading-6 text-primary">
-                  <span className="font-semibold text-warning">建议：</span>
+                  <span className="font-semibold text-warning">{t('chapterEditor:segment.suggestionPrefix')}</span>
                   {segment.suggestion}
                 </div>
               )}
@@ -449,7 +453,7 @@ export function ChapterEditor() {
             className="inline-flex items-center gap-1.5 rounded-lg border border-success/20 bg-success/10 px-3 py-1.5 text-caption font-medium text-success transition-colors hover:bg-success/15 disabled:cursor-not-allowed disabled:opacity-60"
           >
             {state.busy && state.status === 'accepted' ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
-            采纳
+            {t('chapterEditor:segment.accept')}
           </button>
           <button
             type="button"
@@ -458,7 +462,7 @@ export function ChapterEditor() {
             className="inline-flex items-center gap-1.5 rounded-lg border border-error/20 bg-error/10 px-3 py-1.5 text-caption font-medium text-error transition-colors hover:bg-error/15 disabled:cursor-not-allowed disabled:opacity-60"
           >
             <X className="w-3.5 h-3.5" />
-            拒绝
+            {t('chapterEditor:segment.reject')}
           </button>
           <button
             type="button"
@@ -467,7 +471,7 @@ export function ChapterEditor() {
             className="inline-flex items-center gap-1.5 rounded-lg border border-warning/20 bg-warning/10 px-3 py-1.5 text-caption font-medium text-warning transition-colors hover:bg-warning/15 disabled:cursor-not-allowed disabled:opacity-60"
           >
             <RotateCw className={`w-3.5 h-3.5 ${state.busy && state.status === 'regenerating' ? 'animate-spin' : ''}`} />
-            重写
+            {t('chapterEditor:segment.rewrite')}
           </button>
           <button
             type="button"
@@ -475,7 +479,7 @@ export function ChapterEditor() {
             className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-white px-3 py-1.5 text-caption font-medium text-secondary transition-colors hover:text-primary hover:bg-subtle"
           >
             <Pencil className="w-3.5 h-3.5" />
-            {state.editing ? '结束编辑' : '编辑'}
+            {state.editing ? t('chapterEditor:segment.endEdit') : t('common:action.edit')}
           </button>
           <button
             type="button"
@@ -484,12 +488,12 @@ export function ChapterEditor() {
             className="inline-flex items-center gap-1.5 rounded-lg border border-accent/20 bg-accent/10 px-3 py-1.5 text-caption font-medium text-accent transition-colors hover:bg-accent/15 disabled:cursor-not-allowed disabled:opacity-60"
           >
             <Save className="w-3.5 h-3.5" />
-            保存采纳
+            {t('chapterEditor:segment.saveAccept')}
           </button>
           {state.busy && (
             <span className="inline-flex items-center gap-1.5 text-caption text-secondary">
               <Loader2 className="w-3.5 h-3.5 animate-spin" />
-              正在同步
+              {t('chapterEditor:segment.syncing')}
             </span>
           )}
         </div>
@@ -498,19 +502,19 @@ export function ChapterEditor() {
   }
 
   const rightTabs: Array<{ key: RightTab; label: string }> = [
-    { key: 'characters', label: '人物' },
-    { key: 'events', label: '事件' },
-    { key: 'suggestions', label: '建议' },
-    { key: 'review', label: '审核' },
+    { key: 'characters', label: t('chapterEditor:rightPanel.tabCharacters') },
+    { key: 'events', label: t('chapterEditor:rightPanel.tabEvents') },
+    { key: 'suggestions', label: t('chapterEditor:rightPanel.tabSuggestions') },
+    { key: 'review', label: t('chapterEditor:rightPanel.tabReview') },
   ]
 
   const reviewFilters: Array<{ key: ReviewFilter; label: string }> = [
-    { key: 'all', label: '全部' },
-    { key: 'pending', label: '待处理' },
-    { key: 'accepted', label: '已采纳' },
-    { key: 'accepted_edited', label: '已编辑' },
-    { key: 'rejected', label: '已拒绝' },
-    { key: 'regenerating', label: '重写中' },
+    { key: 'all', label: t('chapterEditor:review.filterAll') },
+    { key: 'pending', label: t('chapterEditor:review.filterPending') },
+    { key: 'accepted', label: t('chapterEditor:review.filterAccepted') },
+    { key: 'accepted_edited', label: t('chapterEditor:review.filterEdited') },
+    { key: 'rejected', label: t('chapterEditor:review.filterRejected') },
+    { key: 'regenerating', label: t('chapterEditor:review.filterRegenerating') },
   ]
 
   return (
@@ -525,20 +529,20 @@ export function ChapterEditor() {
           </button>
           <div className="min-w-0">
             <h1 className="text-title-3 font-semibold text-primary truncate max-w-[280px] md:max-w-[420px]">
-              {chapter?.title ?? (chapterLoading ? '加载中...' : `第 ${chapterId ?? chapterIdx} 章`)}
+              {chapter?.title ?? (chapterLoading ? t('chapterEditor:header.loadingTitle') : t('chapterEditor:header.chapterTitle', { index: chapterId ?? chapterIdx }))}
             </h1>
             <div className="flex items-center gap-2 mt-1 text-caption text-secondary flex-wrap">
               <span className="inline-flex items-center gap-1 rounded-full bg-subtle px-2 py-0.5">
                 <Sparkles className="w-3 h-3" />
-                {reviewStats.total} 个审核分段
+                {t('chapterEditor:header.reviewSegments', { count: reviewStats.total })}
               </span>
               <span className="inline-flex items-center gap-1 rounded-full bg-subtle px-2 py-0.5">
                 <Clock3 className="w-3 h-3" />
-                {reviewStats.pending} 待处理
+                {t('chapterEditor:header.pendingCount', { count: reviewStats.pending })}
               </span>
               <span className="inline-flex items-center gap-1 rounded-full bg-subtle px-2 py-0.5">
                 <Check className="w-3 h-3" />
-                {reviewStats.accepted} 已采纳
+                {t('chapterEditor:header.acceptedCount', { count: reviewStats.accepted })}
               </span>
             </div>
           </div>
@@ -546,7 +550,7 @@ export function ChapterEditor() {
 
         <div className="flex items-center gap-1 overflow-x-auto">
           {(['scene', 'rewrite', 'compare'] as const).map((mode) => {
-            const label = mode === 'scene' ? '场景' : mode === 'rewrite' ? '改写' : '对照'
+            const label = t(`chapterEditor:viewMode.${mode}`)
             return (
               <button
                 key={mode}
@@ -568,7 +572,7 @@ export function ChapterEditor() {
       <div className="flex flex-1 min-h-0 overflow-hidden flex-col md:flex-row">
         <div className="w-full md:w-[220px] md:flex-shrink-0 flex flex-col overflow-y-auto border-b md:border-b-0 md:border-r border-border bg-white max-h-40 md:max-h-none">
           <div className="px-3 py-3 border-b border-border shrink-0">
-            <span className="text-caption font-semibold text-secondary uppercase tracking-wide">章节</span>
+            <span className="text-caption font-semibold text-secondary uppercase tracking-wide">{t('chapterEditor:sidebar.chapterListTitle')}</span>
           </div>
           <div className="flex-1 py-2 space-y-0.5">
             {listLoading && Array.from({ length: 8 }).map((_, i) => (
@@ -606,11 +610,11 @@ export function ChapterEditor() {
             <div className="flex flex-1 min-h-0 overflow-hidden flex-col xl:grid xl:grid-cols-[1.05fr_0.95fr] divide-y xl:divide-y-0 xl:divide-x divide-border">
               <div className="flex-1 overflow-y-auto p-4 md:p-6">
                 <div className="flex items-center justify-between mb-4">
-                  <div className="text-caption font-semibold text-secondary uppercase tracking-wide">原文</div>
-                  <div className="text-caption text-secondary">点击右侧分段可定位到原文位置</div>
+                  <div className="text-caption font-semibold text-secondary uppercase tracking-wide">{t('chapterEditor:compare.originalLabel')}</div>
+                  <div className="text-caption text-secondary">{t('chapterEditor:compare.originalHint')}</div>
                 </div>
                 {paragraphs.length === 0 && (
-                  <div className="rounded-2xl border border-dashed border-border bg-subtle/30 p-6 text-center text-secondary">暂无章节内容</div>
+                  <div className="rounded-2xl border border-dashed border-border bg-subtle/30 p-6 text-center text-secondary">{t('chapterEditor:compare.noChapterContent')}</div>
                 )}
                 {paragraphs.map((text, idx) => {
                   const scene = getSceneForParagraph(idx + 1)
@@ -638,14 +642,14 @@ export function ChapterEditor() {
                             border: `1px solid ${sceneStyle.border}44`,
                           }}
                         >
-                          {sceneStyle.name}
+                          {t(`chapterEditor:sceneNames.${sceneStyle.nameKey}`)}
                         </span>
                       )}
                       <p className="text-body leading-[1.8] text-primary pr-14 whitespace-pre-wrap">{text}</p>
                       {selected && (
                         <div className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-accent/10 px-2.5 py-1 text-caption text-accent">
                           <Sparkles className="w-3 h-3" />
-                          当前选中分段
+                          {t('chapterEditor:scene.currentSegmentHighlight')}
                         </div>
                       )}
                     </div>
@@ -656,16 +660,16 @@ export function ChapterEditor() {
               <div className="flex-1 overflow-y-auto p-4 md:p-6 bg-subtle/20">
                 <div className="flex items-center justify-between gap-3 mb-4">
                   <div>
-                    <div className="text-caption font-semibold text-secondary uppercase tracking-wide">改写审核</div>
-                    <div className="text-callout text-secondary mt-1">原文对照、文本编辑、采纳/拒绝/重写</div>
+                    <div className="text-caption font-semibold text-secondary uppercase tracking-wide">{t('chapterEditor:compare.rewriteReviewLabel')}</div>
+                    <div className="text-callout text-secondary mt-1">{t('chapterEditor:compare.rewriteReviewDesc')}</div>
                   </div>
-                  <div className="text-caption text-secondary">{reviewStats.total} 个分段</div>
+                  <div className="text-caption text-secondary">{t('chapterEditor:compare.segmentCount', { count: reviewStats.total })}</div>
                 </div>
                 {rewritesLoading && Array.from({ length: 3 }).map((_, i) => (
                   <div key={i} className="mb-4 h-48 rounded-2xl bg-white animate-pulse border border-border" />
                 ))}
                 {!rewritesLoading && rewriteSegments.length === 0 && (
-                  <div className="rounded-2xl border border-dashed border-border bg-white p-6 text-center text-secondary">暂无改写分段，请先完成 mark/rewrite 阶段。</div>
+                  <div className="rounded-2xl border border-dashed border-border bg-white p-6 text-center text-secondary">{t('chapterEditor:compare.noRewriteSegments')}</div>
                 )}
                 <div className="space-y-4">{rewriteSegments.map((segment) => renderSegmentCard(segment))}</div>
               </div>
@@ -683,18 +687,18 @@ export function ChapterEditor() {
               ))}
 
               {!chapterLoading && !chapter && (
-                <div className="flex items-center justify-center h-40 text-secondary text-callout">选择一个章节以查看内容</div>
+                <div className="flex items-center justify-center h-40 text-secondary text-callout">{t('chapterEditor:selectChapter')}</div>
               )}
 
               {!chapterLoading && viewMode === 'scene' && (
                 <div className="space-y-3">
                   <div className="rounded-2xl border border-border bg-page px-4 py-3">
                     <div className="mb-2 flex items-center justify-between gap-2">
-                      <span className="rounded-full bg-subtle px-2.5 py-1 text-caption text-secondary">整章全文</span>
-                      <span className="rounded-full bg-accent/10 px-2.5 py-1 text-caption text-accent">Analyze 阶段按整章识别</span>
+                      <span className="rounded-full bg-subtle px-2.5 py-1 text-caption text-secondary">{t('chapterEditor:scene.fullChapterLabel')}</span>
+                      <span className="rounded-full bg-accent/10 px-2.5 py-1 text-caption text-accent">{t('chapterEditor:scene.analyzeStageNote')}</span>
                     </div>
                     <p className="whitespace-pre-wrap text-body leading-[1.8] text-primary">
-                      {fullChapterText || '暂无章节内容'}
+                      {fullChapterText || t('chapterEditor:scene.noContent')}
                     </p>
                   </div>
                 </div>
@@ -733,19 +737,19 @@ export function ChapterEditor() {
                           border: `1px solid ${sceneStyle.border}44`,
                         }}
                       >
-                        {sceneStyle.name}
+                        {t(`chapterEditor:sceneNames.${sceneStyle.nameKey}`)}
                       </span>
                     )}
                     <p className="text-body leading-[1.8] text-primary pr-14 whitespace-pre-wrap">{text}</p>
                     {selected && (
                       <div className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-accent/10 px-2.5 py-1 text-caption text-accent">
                         <Sparkles className="w-3 h-3" />
-                        当前选中分段
+                        {t('chapterEditor:scene.currentSegmentHighlight')}
                       </div>
                     )}
                     {isHighPriority && potential?.suggestion && (
                       <div className="mt-2 flex items-start gap-2 p-2 rounded-md bg-warning/10 border border-warning/20">
-                        <span className="text-caption text-warning font-medium shrink-0">建议</span>
+                        <span className="text-caption text-warning font-medium shrink-0">{t('chapterEditor:scene.suggestion')}</span>
                         <span className="text-caption text-primary">{potential.suggestion}</span>
                       </div>
                     )}
@@ -759,7 +763,7 @@ export function ChapterEditor() {
             <div className="flex items-center h-10 px-4 border-b border-border">
               <div className="flex gap-1 flex-1 overflow-x-auto">
                 {(['summary', 'prompts', 'json'] as const).map((tab) => {
-                  const label = tab === 'summary' ? '摘要' : tab === 'prompts' ? 'Prompt日志' : '分析JSON'
+                  const label = tab === 'summary' ? t('chapterEditor:bottom.summaryTab') : tab === 'prompts' ? t('chapterEditor:bottom.promptsTab') : t('chapterEditor:bottom.jsonTab')
                   return (
                     <button
                       key={tab}
@@ -784,13 +788,13 @@ export function ChapterEditor() {
 
             {bottomExpanded && (
               <div className="h-[240px] overflow-y-auto p-4">
-                {bottomTab === 'summary' && <p className="text-body leading-[1.8] text-primary whitespace-pre-wrap">{analysis?.summary ?? (analysisLoading ? '加载中...' : '暂无摘要')}</p>}
+                {bottomTab === 'summary' && <p className="text-body leading-[1.8] text-primary whitespace-pre-wrap">{analysis?.summary ?? (analysisLoading ? t('chapterEditor:bottom.loadingSummary') : t('chapterEditor:bottom.noSummary'))}</p>}
                 {bottomTab === 'prompts' && (
                   <div className="space-y-3">
                     <div className="flex items-center justify-between gap-3">
                       <div>
-                        <p className="text-callout font-medium text-primary">Prompt 时间线</p>
-                        <p className="text-caption text-secondary">{promptLogs.length} 条调用记录（最新在前）</p>
+                        <p className="text-callout font-medium text-primary">{t('chapterEditor:bottom.promptTimeline')}</p>
+                        <p className="text-caption text-secondary">{t('chapterEditor:bottom.promptCallCount', { count: promptLogs.length })}</p>
                       </div>
                       {promptLogsQuery.isFetching && <Loader2 className="h-4 w-4 animate-spin text-secondary" />}
                     </div>
@@ -805,14 +809,14 @@ export function ChapterEditor() {
 
                     {promptLogsQuery.isError && (
                       <div className="rounded-2xl border border-error/20 bg-error/5 px-4 py-3 text-callout text-error">
-                        Prompt 日志加载失败，请稍后重试。
+                        {t('chapterEditor:bottom.promptLoadError')}
                       </div>
                     )}
 
                     {!promptLogsQuery.isLoading && !promptLogsQuery.isError && promptLogs.length === 0 && (
                       <div className="rounded-2xl border border-dashed border-border bg-subtle/20 px-4 py-8 text-center">
-                        <p className="text-callout text-secondary">当前章节还没有 Prompt 日志</p>
-                        <p className="mt-1 text-caption text-tertiary">完成分析或改写后，时间线会自动显示。</p>
+                        <p className="text-callout text-secondary">{t('chapterEditor:bottom.noPromptLogs')}</p>
+                        <p className="mt-1 text-caption text-tertiary">{t('chapterEditor:bottom.noPromptLogsHint')}</p>
                       </div>
                     )}
 
@@ -844,31 +848,31 @@ export function ChapterEditor() {
                                 )}
                                 {entry.validation.passed === false && (
                                   <span className="rounded-full bg-error/10 px-2 py-0.5 text-caption text-error">
-                                    {entry.validation.error_code ?? '校验失败'}
+                                    {entry.validation.error_code ?? t('chapterEditor:bottom.validationFailed')}
                                   </span>
                                 )}
                                 {entry.validation.passed === true && (
                                   <span className="rounded-full bg-success/10 px-2 py-0.5 text-caption text-success">
-                                    校验通过
+                                    {t('chapterEditor:bottom.validationPassed')}
                                   </span>
                                 )}
                                 <span className={`rounded-full px-2 py-0.5 text-caption ${promptLayout.layout === 'legacy' ? 'bg-warning/10 text-warning' : promptLayout.layout === 'current' ? 'bg-success/10 text-success' : 'bg-subtle text-secondary'}`}>
                                   {promptLayout.layout === 'legacy'
-                                    ? '旧结构：规则在 System'
+                                    ? t('chapterEditor:bottom.layoutLegacy')
                                     : promptLayout.layout === 'current'
-                                      ? '新结构：规则在 User'
+                                      ? t('chapterEditor:bottom.layoutCurrent')
                                       : promptLayout.layout === 'mixed'
-                                        ? '混合结构'
-                                        : '结构未知'}
+                                        ? t('chapterEditor:bottom.layoutMixed')
+                                        : t('chapterEditor:bottom.layoutUnknown')}
                                 </span>
                                 {promptLayout.userHasWholeChapterDirective && (
                                   <span className="rounded-full bg-accent/10 px-2 py-0.5 text-caption text-accent">
-                                    整章识别指令
+                                    {t('chapterEditor:bottom.wholeChapterDirective')}
                                   </span>
                                 )}
                               </div>
                               <p className="text-callout font-medium text-primary">
-                                {formatPromptLogTokens(entry.tokens)} · {entry.attempt} 次尝试
+                                {formatPromptLogTokens(entry.tokens)} · {t('chapterEditor:bottom.attemptCount', { count: entry.attempt })}
                               </p>
                               <p className="text-caption text-secondary">
                                 {formatPromptLogTime(entry.timestamp)} · {entry.duration_ms}ms
@@ -932,7 +936,7 @@ export function ChapterEditor() {
                                   className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-white px-3 py-1.5 text-caption font-medium text-secondary transition-colors hover:border-accent hover:text-accent"
                                 >
                                   <Copy className="h-3.5 w-3.5" />
-                                  {copied ? '已复制' : '复制 Prompt'}
+                                  {copied ? t('chapterEditor:bottom.copied') : t('chapterEditor:bottom.copyPrompt')}
                                 </button>
                                 <button
                                   type="button"
@@ -941,7 +945,7 @@ export function ChapterEditor() {
                                   className="inline-flex items-center gap-1.5 rounded-lg border border-accent/20 bg-accent/10 px-3 py-1.5 text-caption font-medium text-accent transition-colors hover:bg-accent/15 disabled:cursor-not-allowed disabled:opacity-60"
                                 >
                                   {retryPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RotateCw className="h-3.5 w-3.5" />}
-                                  使用此 Prompt 重试
+                                  {t('chapterEditor:bottom.retryWithPrompt')}
                                 </button>
                                 {retryResult && (
                                   <span className="rounded-full bg-success/10 px-3 py-1 text-caption text-success">
@@ -979,7 +983,7 @@ export function ChapterEditor() {
             {rightTab === 'characters' && (
               <>
                 {analysisLoading && Array.from({ length: 3 }).map((_, i) => <div key={i} className="h-20 rounded-xl bg-subtle animate-pulse" />)}
-                {!analysisLoading && (!analysis?.characters || analysis.characters.length === 0) && <p className="text-callout text-secondary text-center py-8">暂无人物分析</p>}
+                {!analysisLoading && (!analysis?.characters || analysis.characters.length === 0) && <p className="text-callout text-secondary text-center py-8">{t('chapterEditor:characters.noCharacters')}</p>}
                 {analysis?.characters?.map((char, i) => {
                   const active = selectedCharacter === char.name
                   return (
@@ -1005,19 +1009,19 @@ export function ChapterEditor() {
                     <div className="flex items-center justify-between gap-2">
                       <div className="flex items-center gap-2 text-caption font-semibold text-secondary uppercase tracking-wide">
                         <Users className="w-3.5 h-3.5" />
-                        角色轨迹
+                        {t('chapterEditor:characters.trajectoryTitle')}
                       </div>
                       {trajectoryQuery.isLoading && <Loader2 className="w-3.5 h-3.5 animate-spin text-secondary" />}
                     </div>
-                    {!trajectoryQuery.isLoading && currentCharacterTrajectory.length === 0 && <p className="text-caption text-secondary">暂无轨迹数据</p>}
+                    {!trajectoryQuery.isLoading && currentCharacterTrajectory.length === 0 && <p className="text-caption text-secondary">{t('chapterEditor:characters.noTrajectory')}</p>}
                     <div className="space-y-2">
                       {currentCharacterTrajectory.map((item, index) => (
                         <div key={`${item.chapter_index}-${index}`} className="rounded-xl bg-white border border-border p-3">
                           <div className="flex items-center justify-between gap-2">
-                            <span className="text-caption px-2 py-0.5 rounded-full bg-accent/10 text-accent">第 {item.chapter_index} 章</span>
+                            <span className="text-caption px-2 py-0.5 rounded-full bg-accent/10 text-accent">{t('chapterEditor:characters.chapterRef', { index: item.chapter_index })}</span>
                             {item.paragraph_range && <span className="text-caption text-secondary">P{item.paragraph_range[0]}-{item.paragraph_range[1]}</span>}
                           </div>
-                          <p className="mt-2 text-callout text-primary leading-6 whitespace-pre-wrap">{item.summary ?? item.state ?? '暂无说明'}</p>
+                          <p className="mt-2 text-callout text-primary leading-6 whitespace-pre-wrap">{item.summary ?? item.state ?? t('chapterEditor:characters.noTrajectory')}</p>
                           <div className="mt-2 flex items-center gap-2 flex-wrap text-caption text-secondary">
                             {item.emotion && <span className="rounded-full bg-subtle px-2 py-0.5">{item.emotion}</span>}
                             {item.role_in_chapter && <span className="rounded-full bg-subtle px-2 py-0.5">{item.role_in_chapter}</span>}
@@ -1034,7 +1038,7 @@ export function ChapterEditor() {
             {rightTab === 'events' && (
               <>
                 {analysisLoading && Array.from({ length: 4 }).map((_, i) => <div key={i} className="h-16 rounded-xl bg-subtle animate-pulse" />)}
-                {!analysisLoading && (!analysis?.key_events || analysis.key_events.length === 0) && <p className="text-callout text-secondary text-center py-8">暂无事件记录</p>}
+                {!analysisLoading && (!analysis?.key_events || analysis.key_events.length === 0) && <p className="text-callout text-secondary text-center py-8">{t('chapterEditor:events.noEvents')}</p>}
                 <div className="relative pl-4">
                   <div className="absolute left-2 top-2 bottom-2 w-px bg-border" />
                   <div className="space-y-3">
@@ -1061,7 +1065,7 @@ export function ChapterEditor() {
             {rightTab === 'suggestions' && (
               <>
                 {analysisLoading && Array.from({ length: 3 }).map((_, i) => <div key={i} className="h-24 rounded-xl bg-subtle animate-pulse" />)}
-                {!analysisLoading && (!analysis?.scenes || analysis.scenes.every((scene) => !scene.rewrite_potential?.expandable && !scene.rewrite_potential?.rewritable)) && <p className="text-callout text-secondary text-center py-8">暂无改写建议</p>}
+                {!analysisLoading && (!analysis?.scenes || analysis.scenes.every((scene) => !scene.rewrite_potential?.expandable && !scene.rewrite_potential?.rewritable)) && <p className="text-callout text-secondary text-center py-8">{t('chapterEditor:suggestions.noSuggestions')}</p>}
                 {analysis?.scenes
                   ?.filter((scene) => scene.rewrite_potential?.expandable || scene.rewrite_potential?.rewritable)
                   .sort((a, b) => (b.rewrite_potential?.priority ?? 0) - (a.rewrite_potential?.priority ?? 0))
@@ -1073,7 +1077,7 @@ export function ChapterEditor() {
                         <div className="flex items-center justify-between">
                           {sceneStyle ? (
                             <span className="text-caption px-2 py-0.5 rounded-full" style={{ backgroundColor: sceneStyle.border + '22', color: sceneStyle.border }}>
-                              {sceneStyle.name}
+                              {t(`chapterEditor:sceneNames.${sceneStyle.nameKey}`)}
                             </span>
                           ) : <span />}
                           <PriorityStars priority={p?.priority ?? 0} />
@@ -1082,7 +1086,7 @@ export function ChapterEditor() {
                         <div className="flex items-center justify-between">
                           <span className="text-caption text-tertiary">P{scene.paragraph_range[0]}–{scene.paragraph_range[1]}</span>
                           <button onClick={() => scrollToRange(scene.paragraph_range[0])} className="text-caption text-accent hover:underline cursor-pointer">
-                            标记改写
+                            {t('chapterEditor:suggestions.markRewrite')}
                           </button>
                         </div>
                       </div>
@@ -1095,19 +1099,19 @@ export function ChapterEditor() {
               <div className="space-y-4">
                 <div className="grid grid-cols-2 gap-2">
                   <div className="rounded-xl bg-subtle p-3">
-                    <div className="text-caption text-secondary">总分段</div>
+                    <div className="text-caption text-secondary">{t('chapterEditor:review.totalSegments')}</div>
                     <div className="mt-1 text-title-3 font-semibold text-primary">{reviewStats.total}</div>
                   </div>
                   <div className="rounded-xl bg-subtle p-3">
-                    <div className="text-caption text-secondary">待处理</div>
+                    <div className="text-caption text-secondary">{t('chapterEditor:review.pendingLabel')}</div>
                     <div className="mt-1 text-title-3 font-semibold text-primary">{reviewStats.pending}</div>
                   </div>
                   <div className="rounded-xl bg-subtle p-3">
-                    <div className="text-caption text-secondary">已采纳</div>
+                    <div className="text-caption text-secondary">{t('chapterEditor:review.acceptedLabel')}</div>
                     <div className="mt-1 text-title-3 font-semibold text-primary">{reviewStats.accepted}</div>
                   </div>
                   <div className="rounded-xl bg-subtle p-3">
-                    <div className="text-caption text-secondary">已编辑</div>
+                    <div className="text-caption text-secondary">{t('chapterEditor:review.editedLabel')}</div>
                     <div className="mt-1 text-title-3 font-semibold text-primary">{reviewStats.edited}</div>
                   </div>
                 </div>
@@ -1125,7 +1129,7 @@ export function ChapterEditor() {
                 </div>
 
                 {rewritesLoading && Array.from({ length: 3 }).map((_, i) => <div key={i} className="h-24 rounded-xl bg-subtle animate-pulse" />)}
-                {!rewritesLoading && filteredSegments.length === 0 && <p className="text-callout text-secondary text-center py-8">暂无可显示的审核分段</p>}
+                {!rewritesLoading && filteredSegments.length === 0 && <p className="text-callout text-secondary text-center py-8">{t('chapterEditor:review.noSegments')}</p>}
 
                 <div className="space-y-3">
                   {filteredSegments.map(({ segment, state }) => {
@@ -1141,21 +1145,21 @@ export function ChapterEditor() {
                           <div>
                             <div className="flex items-center gap-2 flex-wrap">
                               <span className="text-caption px-2 py-0.5 rounded-full bg-subtle text-secondary">P{segment.paragraph_range[0]}-{segment.paragraph_range[1]}</span>
-                              <span className="text-caption px-2 py-0.5 rounded-full bg-subtle text-secondary">{segment.source === 'manual' ? '手动' : '自动'}</span>
+                              <span className="text-caption px-2 py-0.5 rounded-full bg-subtle text-secondary">{segment.source === 'manual' ? t('chapterEditor:segment.sourceManual') : t('chapterEditor:segment.sourceAuto')}</span>
                             </div>
-                            <p className="mt-1 text-callout font-medium text-primary truncate max-w-[220px]">{segment.scene_type || '未命名分段'}</p>
+                            <p className="mt-1 text-callout font-medium text-primary truncate max-w-[220px]">{segment.scene_type || t('chapterEditor:segment.unnamed')}</p>
                           </div>
                           <span className={`shrink-0 text-caption px-2 py-0.5 rounded-full border ${reviewStatusClass(state.status)}`}>
-                            {reviewStatusLabel(state.status)}
+                            {reviewStatusLabel(state.status, t)}
                           </span>
                         </div>
                         <p className="mt-2 text-caption leading-6 text-secondary line-clamp-3 whitespace-pre-wrap">
-                          {shortText || segment.suggestion || '暂无原文'}
+                          {shortText || segment.suggestion || t('chapterEditor:review.noOriginalText')}
                         </p>
                         <div className="mt-3 flex flex-wrap gap-2">
-                          <span className="inline-flex items-center gap-1 rounded-lg bg-success/10 px-2 py-1 text-caption text-success"><Check className="w-3 h-3" />采纳</span>
-                          <span className="inline-flex items-center gap-1 rounded-lg bg-error/10 px-2 py-1 text-caption text-error"><X className="w-3 h-3" />拒绝</span>
-                          <span className="inline-flex items-center gap-1 rounded-lg bg-warning/10 px-2 py-1 text-caption text-warning"><RotateCw className="w-3 h-3" />重写</span>
+                          <span className="inline-flex items-center gap-1 rounded-lg bg-success/10 px-2 py-1 text-caption text-success"><Check className="w-3 h-3" />{t('chapterEditor:segment.accept')}</span>
+                          <span className="inline-flex items-center gap-1 rounded-lg bg-error/10 px-2 py-1 text-caption text-error"><X className="w-3 h-3" />{t('chapterEditor:segment.reject')}</span>
+                          <span className="inline-flex items-center gap-1 rounded-lg bg-warning/10 px-2 py-1 text-caption text-warning"><RotateCw className="w-3 h-3" />{t('chapterEditor:segment.rewrite')}</span>
                         </div>
                       </button>
                     )
@@ -1171,16 +1175,16 @@ export function ChapterEditor() {
         {selectedSegment && selectedSegmentState && (
           <div className="pointer-events-auto max-w-[320px] rounded-2xl border border-border bg-white/95 backdrop-blur shadow-lg p-3">
             <div className="flex items-center justify-between gap-2">
-              <div className="text-caption font-semibold text-secondary uppercase tracking-wide">当前分段</div>
+              <div className="text-caption font-semibold text-secondary uppercase tracking-wide">{t('chapterEditor:floatingPanel.currentSegmentTitle')}</div>
               <span className={`text-caption px-2 py-0.5 rounded-full border ${reviewStatusClass(selectedSegmentState.status)}`}>
-                {reviewStatusLabel(selectedSegmentState.status)}
+                {reviewStatusLabel(selectedSegmentState.status, t)}
               </span>
             </div>
             <div className="mt-2 text-callout font-medium text-primary">
-              P{selectedSegment.paragraph_range[0]}-{selectedSegment.paragraph_range[1]} · {selectedSegment.scene_type || '未命名分段'}
+              P{selectedSegment.paragraph_range[0]}-{selectedSegment.paragraph_range[1]} · {selectedSegment.scene_type || t('chapterEditor:segment.unnamed')}
             </div>
             <p className="mt-2 text-caption leading-6 text-secondary whitespace-pre-wrap max-h-24 overflow-y-auto">
-              {selectedSegmentState.draftText || selectedSegment.suggestion || '尚未填写改写稿'}
+              {selectedSegmentState.draftText || selectedSegment.suggestion || t('chapterEditor:floatingPanel.noDraft')}
             </p>
           </div>
         )}

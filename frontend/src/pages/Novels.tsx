@@ -1,17 +1,18 @@
 import { useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useTranslation } from 'react-i18next'
 import { AlertCircle, FileText, Loader2, Trash2, Upload, X } from 'lucide-react'
 import { getNovels, novels as novelsApi, uploadFile } from '@/lib/api'
 import type { Novel } from '@/types'
 
-function formatChars(n: number): string {
-  if (n >= 10000) return `${(n / 10000).toFixed(1)}万字`
-  return `${n.toLocaleString()}字`
+function formatChars(n: number, t: (key: string, opts?: Record<string, unknown>) => string): string {
+  if (n >= 10000) return t('common:format.tenThousandChars', { count: (n / 10000).toFixed(1) })
+  return t('common:format.chars', { count: n.toLocaleString() })
 }
 
-function formatDate(iso: string): string {
-  return new Date(iso).toLocaleDateString('zh-CN', { year: 'numeric', month: 'numeric', day: 'numeric' })
+function formatDate(iso: string, language: string): string {
+  return new Date(iso).toLocaleDateString(language, { year: 'numeric', month: 'numeric', day: 'numeric' })
 }
 
 function ImportNovelModal({
@@ -21,6 +22,7 @@ function ImportNovelModal({
   onClose: () => void
   onSuccess: (novelId: string) => void
 }) {
+  const { t } = useTranslation(['novels', 'common'])
   const [file, setFile] = useState<File | null>(null)
   const [dragging, setDragging] = useState(false)
   const [progress, setProgress] = useState(0)
@@ -31,7 +33,7 @@ function ImportNovelModal({
 
   const handleFile = (f: File) => {
     if (!f.name.match(/\.(txt|epub)$/i)) {
-      setError('仅支持 .txt 和 .epub 格式')
+      setError(t('common:upload.onlyTxtEpub'))
       return
     }
     setError(null)
@@ -46,7 +48,7 @@ function ImportNovelModal({
       const result = await uploadFile(file, (pct) => setProgress(pct))
       onSuccess(result.novel_id)
     } catch (err) {
-      setError(err instanceof Error ? err.message : '上传失败，请重试')
+      setError(err instanceof Error ? err.message : t('common:upload.uploadFailed'))
       setUploading(false)
     }
   }
@@ -61,7 +63,7 @@ function ImportNovelModal({
     >
       <div className="w-full max-w-md overflow-hidden rounded-2xl border border-border bg-white shadow-lg">
         <div className="flex items-center justify-between border-b border-border px-6 py-5">
-          <h2 className="text-title-2 font-semibold text-primary">导入小说</h2>
+          <h2 className="text-title-2 font-semibold text-primary">{t('modal.title')}</h2>
           <button
             type="button"
             onClick={onClose}
@@ -108,8 +110,8 @@ function ImportNovelModal({
             ) : (
               <div className="space-y-2">
                 <Upload className="mx-auto h-8 w-8 text-secondary" />
-                <p className="text-body-bold text-primary">拖拽文件到这里或点击选择</p>
-                <p className="text-caption text-secondary">支持 .txt / .epub</p>
+                <p className="text-body-bold text-primary">{t('common:upload.dragOrClickToSelect')}</p>
+                <p className="text-caption text-secondary">{t('common:upload.supportedFormatsTxtEpub')}</p>
               </div>
             )}
           </div>
@@ -117,7 +119,7 @@ function ImportNovelModal({
           {uploading && (
             <div className="space-y-1.5">
               <div className="flex items-center justify-between">
-                <span className="text-caption text-secondary">上传中...</span>
+                <span className="text-caption text-secondary">{t('common:upload.uploading')}</span>
                 <span className="text-caption font-medium text-primary">{Math.round(progress)}%</span>
               </div>
               <div className="h-2 overflow-hidden rounded-full bg-subtle">
@@ -136,7 +138,7 @@ function ImportNovelModal({
 
         <div className="flex justify-end gap-3 border-t border-border px-6 py-4">
           <button type="button" onClick={onClose} disabled={uploading} className="button-secondary">
-            取消
+            {t('common:action.cancel')}
           </button>
           <button
             type="button"
@@ -145,7 +147,7 @@ function ImportNovelModal({
             className="button-primary flex items-center gap-2 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
-            {uploading ? '上传中' : '开始导入'}
+            {uploading ? t('common:upload.uploadingShort') : t('common:upload.startImport')}
           </button>
         </div>
       </div>
@@ -164,20 +166,21 @@ function NovelItem({
   onOpen: () => void
   onDelete: () => void
 }) {
+  const { t, i18n } = useTranslation(['novels', 'common'])
   return (
     <div className="rounded-2xl border border-border bg-white p-5 shadow-xs">
       <div className="flex items-start justify-between gap-4">
         <button type="button" onClick={onOpen} className="min-w-0 text-left">
           <p className="truncate text-title-2 font-semibold text-primary">《{novel.title}》</p>
           <p className="mt-1 text-callout text-secondary">
-            {formatChars(novel.total_chars)} · {novel.chapter_count ?? '—'} 章 · {novel.file_format.toUpperCase()}
+            {formatChars(novel.total_chars, t)} · {novel.chapter_count != null ? t('chapterCount', { count: novel.chapter_count }) : '—'} · {novel.file_format.toUpperCase()}
           </p>
-          <p className="mt-1 text-caption text-tertiary">{formatDate(novel.imported_at)}</p>
+          <p className="mt-1 text-caption text-tertiary">{formatDate(novel.imported_at, i18n.language)}</p>
         </button>
 
         <div className="flex items-center gap-2">
           <button type="button" onClick={onOpen} className="button-secondary">
-            查看
+            {t('view')}
           </button>
           <button
             type="button"
@@ -186,7 +189,7 @@ function NovelItem({
             className="button-secondary flex items-center gap-2 text-error hover:text-error disabled:cursor-not-allowed disabled:opacity-50"
           >
             {deleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
-            {deleting ? '删除中' : '删除'}
+            {deleting ? t('deleting') : t('common:action.delete')}
           </button>
         </div>
       </div>
@@ -197,6 +200,7 @@ function NovelItem({
 export function Novels() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
+  const { t } = useTranslation(['novels', 'common'])
   const [showImport, setShowImport] = useState(false)
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const [message, setMessage] = useState<string | null>(null)
@@ -222,13 +226,13 @@ export function Novels() {
     },
     onSuccess: (_data, _id, context) => {
       const title = context?.deletedNovel?.title
-      setMessage(title ? `已删除《${title}》` : '已删除小说')
+      setMessage(title ? t('deleted', { title }) : t('deletedNovel'))
     },
     onError: (error, _id, context) => {
       if (context?.previous) {
         queryClient.setQueryData<Novel[]>(['novels'], context.previous)
       }
-      setMessage(error instanceof Error ? error.message : '删除失败，请重试')
+      setMessage(error instanceof Error ? error.message : t('deleteFailed'))
     },
     onSettled: () => {
       deleteLockRef.current = false
@@ -241,7 +245,7 @@ export function Novels() {
     if (deleteLockRef.current) return
     const current = novels.find((item) => item.id === id)
     if (!current) return
-    const confirmed = window.confirm(`确认删除《${current.title}》？此操作不可恢复。`)
+    const confirmed = window.confirm(t('confirmDelete', { title: current.title }))
     if (!confirmed) return
 
     deleteLockRef.current = true
@@ -264,12 +268,12 @@ export function Novels() {
     <div className="space-y-6">
       <div className="flex items-center justify-between gap-4">
         <div>
-          <h1 className="text-display font-bold text-primary">小说管理</h1>
-          <p className="mt-1 text-callout text-secondary">管理已导入小说，支持进入详情与删除。</p>
+          <h1 className="text-display font-bold text-primary">{t('title')}</h1>
+          <p className="mt-1 text-callout text-secondary">{t('subtitle')}</p>
         </div>
         <button type="button" onClick={() => setShowImport(true)} className="button-primary flex items-center gap-2">
           <Upload className="h-4 w-4" />
-          导入小说
+          {t('importButton')}
         </button>
       </div>
 
@@ -293,8 +297,8 @@ export function Novels() {
       ) : novels.length === 0 ? (
         <div className="rounded-2xl border border-dashed border-border bg-subtle px-6 py-20 text-center">
           <FileText className="mx-auto h-10 w-10 text-tertiary" />
-          <p className="mt-3 text-title-3 font-semibold text-primary">还没有小说</p>
-          <p className="mt-1 text-callout text-secondary">点击右上角“导入小说”开始。</p>
+          <p className="mt-3 text-title-3 font-semibold text-primary">{t('empty')}</p>
+          <p className="mt-1 text-callout text-secondary">{t('emptyHint')}</p>
         </div>
       ) : (
         <div className="space-y-3">

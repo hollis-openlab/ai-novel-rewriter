@@ -165,8 +165,8 @@ export function normalizeQualityReport(report: QualityReportPayload | null | und
 
   return {
     thresholdComparisons: [
-      pickThresholdComparison('失败率', failedRatio, failedThreshold, '<=', 'ratio', '优先修复 failed 或回退段落，降低失败占比'),
-      pickThresholdComparison('告警数', warningCount, warningThreshold, '<=', 'count', '清理重复段落、范围越界或连续性告警后再导出'),
+      pickThresholdComparison('quality.failedRatio', failedRatio, failedThreshold, '<=', 'ratio', 'quality.failedRatioSuggestion'),
+      pickThresholdComparison('quality.warningCount', warningCount, warningThreshold, '<=', 'count', 'quality.warningCountSuggestion'),
     ],
     warnings: report.warnings ?? [],
     blocked: report.blocked,

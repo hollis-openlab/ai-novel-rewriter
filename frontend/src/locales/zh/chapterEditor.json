@@ -1,0 +1,140 @@
+{
+  "header": {
+    "loadingTitle": "加载中...",
+    "chapterTitle": "第 {{index}} 章",
+    "reviewSegments": "{{count}} 个审核分段",
+    "pendingCount": "{{count}} 待处理",
+    "acceptedCount": "{{count}} 已采纳"
+  },
+  "viewMode": {
+    "scene": "场景",
+    "rewrite": "改写",
+    "compare": "对照"
+  },
+  "sidebar": {
+    "chapterListTitle": "章节"
+  },
+  "scene": {
+    "fullChapterLabel": "整章全文",
+    "analyzeStageNote": "Analyze 阶段按整章识别",
+    "noContent": "暂无章节内容",
+    "currentSegmentHighlight": "当前选中分段",
+    "suggestion": "建议"
+  },
+  "compare": {
+    "originalLabel": "原文",
+    "originalHint": "点击右侧分段可定位到原文位置",
+    "noChapterContent": "暂无章节内容",
+    "rewriteReviewLabel": "改写审核",
+    "rewriteReviewDesc": "原文对照、文本编辑、采纳/拒绝/重写",
+    "segmentCount": "{{count}} 个分段",
+    "noRewriteSegments": "暂无改写分段，请先完成 mark/rewrite 阶段。"
+  },
+  "selectChapter": "选择一个章节以查看内容",
+  "bottom": {
+    "summaryTab": "摘要",
+    "promptsTab": "Prompt日志",
+    "jsonTab": "分析JSON",
+    "loadingSummary": "加载中...",
+    "noSummary": "暂无摘要",
+    "promptTimeline": "Prompt 时间线",
+    "promptCallCount": "{{count}} 条调用记录（最新在前）",
+    "promptLoadError": "Prompt 日志加载失败，请稍后重试。",
+    "noPromptLogs": "当前章节还没有 Prompt 日志",
+    "noPromptLogsHint": "完成分析或改写后，时间线会自动显示。",
+    "attemptCount": "{{count}} 次尝试",
+    "validationFailed": "校验失败",
+    "validationPassed": "校验通过",
+    "layoutLegacy": "旧结构：规则在 System",
+    "layoutCurrent": "新结构：规则在 User",
+    "layoutMixed": "混合结构",
+    "layoutUnknown": "结构未知",
+    "wholeChapterDirective": "整章识别指令",
+    "copyPrompt": "复制 Prompt",
+    "copied": "已复制",
+    "retryWithPrompt": "使用此 Prompt 重试"
+  },
+  "rightPanel": {
+    "tabCharacters": "人物",
+    "tabEvents": "事件",
+    "tabSuggestions": "建议",
+    "tabReview": "审核"
+  },
+  "characters": {
+    "noCharacters": "暂无人物分析",
+    "trajectoryTitle": "角色轨迹",
+    "noTrajectory": "暂无轨迹数据",
+    "chapterRef": "第 {{index}} 章"
+  },
+  "events": {
+    "noEvents": "暂无事件记录"
+  },
+  "suggestions": {
+    "noSuggestions": "暂无改写建议",
+    "markRewrite": "标记改写"
+  },
+  "review": {
+    "totalSegments": "总分段",
+    "pendingLabel": "待处理",
+    "acceptedLabel": "已采纳",
+    "editedLabel": "已编辑",
+    "noSegments": "暂无可显示的审核分段",
+    "filterAll": "全部",
+    "filterPending": "待处理",
+    "filterAccepted": "已采纳",
+    "filterEdited": "已编辑",
+    "filterRejected": "已拒绝",
+    "filterRegenerating": "重写中",
+    "noOriginalText": "暂无原文"
+  },
+  "segment": {
+    "sourceManual": "手动",
+    "sourceAuto": "自动",
+    "confirmed": "已确认",
+    "unnamed": "未命名分段",
+    "originalLabel": "原文",
+    "noOriginalText": "暂无原文可显示",
+    "rewriteLabel": "改写稿",
+    "collapseEdit": "收起编辑",
+    "editPlaceholder": "在这里输入或修改改写文本，然后保存为 accepted_edited",
+    "clickToEdit": "点击「编辑」后即可输入改写文本",
+    "suggestionPrefix": "建议：",
+    "accept": "采纳",
+    "reject": "拒绝",
+    "rewrite": "重写",
+    "endEdit": "结束编辑",
+    "saveAccept": "保存采纳",
+    "syncing": "正在同步"
+  },
+  "reviewStatus": {
+    "accepted": "已采纳",
+    "acceptedEdited": "已编辑采纳",
+    "rejected": "已拒绝",
+    "regenerating": "重写中",
+    "pending": "待处理"
+  },
+  "floatingPanel": {
+    "currentSegmentTitle": "当前分段",
+    "noDraft": "尚未填写改写稿"
+  },
+  "sceneTypes": {
+    "combat": "战斗",
+    "dialogue": "对话",
+    "psychology": "心理描写",
+    "environment": "环境描写",
+    "narration": "叙事过渡",
+    "romance": "感情互动",
+    "flashback": "回忆闪回",
+    "daily": "日常生活"
+  },
+  "sceneNames": {
+    "combat": "战斗",
+    "dialogue": "对话",
+    "psychology": "心理",
+    "environment": "环境",
+    "narration": "叙事",
+    "romance": "感情",
+    "flashback": "回忆",
+    "daily": "日常"
+  }
+}

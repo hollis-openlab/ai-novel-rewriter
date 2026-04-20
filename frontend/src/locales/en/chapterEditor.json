@@ -1,0 +1,140 @@
+{
+  "header": {
+    "loadingTitle": "Loading...",
+    "chapterTitle": "Chapter {{index}}",
+    "reviewSegments": "{{count}} review segments",
+    "pendingCount": "{{count}} pending",
+    "acceptedCount": "{{count}} accepted"
+  },
+  "viewMode": {
+    "scene": "Scene",
+    "rewrite": "Rewrite",
+    "compare": "Compare"
+  },
+  "sidebar": {
+    "chapterListTitle": "Chapters"
+  },
+  "scene": {
+    "fullChapterLabel": "Full Chapter",
+    "analyzeStageNote": "Analyze stage identifies by full chapter",
+    "noContent": "No chapter content",
+    "currentSegmentHighlight": "Current segment selected",
+    "suggestion": "Suggestion"
+  },
+  "compare": {
+    "originalLabel": "Original",
+    "originalHint": "Click a segment on the right to scroll to its position",
+    "noChapterContent": "No chapter content",
+    "rewriteReviewLabel": "Rewrite Review",
+    "rewriteReviewDesc": "Original comparison, text editing, accept/reject/rewrite",
+    "segmentCount": "{{count}} segments",
+    "noRewriteSegments": "No rewrite segments yet. Please complete the mark/rewrite stage first."
+  },
+  "selectChapter": "Select a chapter to view its content",
+  "bottom": {
+    "summaryTab": "Summary",
+    "promptsTab": "Prompt Log",
+    "jsonTab": "Analysis JSON",
+    "loadingSummary": "Loading...",
+    "noSummary": "No summary available",
+    "promptTimeline": "Prompt Timeline",
+    "promptCallCount": "{{count}} call records (newest first)",
+    "promptLoadError": "Failed to load prompt logs. Please try again later.",
+    "noPromptLogs": "No prompt logs for this chapter yet",
+    "noPromptLogsHint": "The timeline will appear after analysis or rewriting is complete.",
+    "attemptCount": "{{count}} attempts",
+    "validationFailed": "Validation failed",
+    "validationPassed": "Validation passed",
+    "layoutLegacy": "Legacy: rules in System",
+    "layoutCurrent": "Current: rules in User",
+    "layoutMixed": "Mixed structure",
+    "layoutUnknown": "Unknown structure",
+    "wholeChapterDirective": "Whole-chapter directive",
+    "copyPrompt": "Copy Prompt",
+    "copied": "Copied",
+    "retryWithPrompt": "Retry with this Prompt"
+  },
+  "rightPanel": {
+    "tabCharacters": "Characters",
+    "tabEvents": "Events",
+    "tabSuggestions": "Suggestions",
+    "tabReview": "Review"
+  },
+  "characters": {
+    "noCharacters": "No character analysis",
+    "trajectoryTitle": "Character Trajectory",
+    "noTrajectory": "No trajectory data",
+    "chapterRef": "Chapter {{index}}"
+  },
+  "events": {
+    "noEvents": "No events recorded"
+  },
+  "suggestions": {
+    "noSuggestions": "No rewrite suggestions",
+    "markRewrite": "Mark for rewrite"
+  },
+  "review": {
+    "totalSegments": "Total",
+    "pendingLabel": "Pending",
+    "acceptedLabel": "Accepted",
+    "editedLabel": "Edited",
+    "noSegments": "No review segments to display",
+    "filterAll": "All",
+    "filterPending": "Pending",
+    "filterAccepted": "Accepted",
+    "filterEdited": "Edited",
+    "filterRejected": "Rejected",
+    "filterRegenerating": "Rewriting",
+    "noOriginalText": "No original text"
+  },
+  "segment": {
+    "sourceManual": "Manual",
+    "sourceAuto": "Auto",
+    "confirmed": "Confirmed",
+    "unnamed": "Unnamed segment",
+    "originalLabel": "Original",
+    "noOriginalText": "No original text to display",
+    "rewriteLabel": "Rewrite Draft",
+    "collapseEdit": "Collapse edit",
+    "editPlaceholder": "Enter or modify the rewrite text here, then save as accepted_edited",
+    "clickToEdit": "Click [Edit] to enter rewrite text",
+    "suggestionPrefix": "Suggestion: ",
+    "accept": "Accept",
+    "reject": "Reject",
+    "rewrite": "Rewrite",
+    "endEdit": "Done editing",
+    "saveAccept": "Save & Accept",
+    "syncing": "Syncing"
+  },
+  "reviewStatus": {
+    "accepted": "Accepted",
+    "acceptedEdited": "Edited & Accepted",
+    "rejected": "Rejected",
+    "regenerating": "Rewriting",
+    "pending": "Pending"
+  },
+  "floatingPanel": {
+    "currentSegmentTitle": "Current Segment",
+    "noDraft": "No draft written yet"
+  },
+  "sceneTypes": {
+    "combat": "Combat",
+    "dialogue": "Dialogue",
+    "psychology": "Psychology",
+    "environment": "Environment",
+    "narration": "Narration",
+    "romance": "Romance",
+    "flashback": "Flashback",
+    "daily": "Daily Life"
+  },
+  "sceneNames": {
+    "combat": "Combat",
+    "dialogue": "Dialogue",
+    "psychology": "Psych",
+    "environment": "Env",
+    "narration": "Narr",
+    "romance": "Romance",
+    "flashback": "Flash",
+    "daily": "Daily"
+  }
+}

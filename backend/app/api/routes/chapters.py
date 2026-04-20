@@ -791,7 +791,7 @@ def _coerce_rewrite_segment(raw: dict[str, object], *, chapter: Chapter) -> Rewr
             segment_id=str(raw.get("segment_id") or uuid4()),
             paragraph_range=paragraph_range,
             anchor=build_anchor(chapter, paragraph_range),
-            scene_type=str(raw.get("scene_type") or "手动标记"),
+            scene_type=str(raw.get("scene_type") or "manual_mark"),
             original_chars=original_chars,
             strategy=strategy,
             target_ratio=target_ratio,

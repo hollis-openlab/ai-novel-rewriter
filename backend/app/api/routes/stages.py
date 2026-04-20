@@ -2851,7 +2851,7 @@ async def _run_rewrite_stage(
                     if fix_req is None:
                         continue
                     fix_req.rewrite_general_guidance += (
-                        f"\n\n[审核反馈] {issue.problem}\n[修复边界] {issue.fix_boundary}"
+                        f"\n\n[Review Feedback] {issue.problem}\n[Fix Boundary] {issue.fix_boundary}"
                     )
                     fix_result = await _submit(fix_req)
                     if fix_result.status == RewriteResultStatus.COMPLETED:
@@ -3317,11 +3317,12 @@ async def run_stage(
             StageStatus.COMPLETED.value,
             StageStatus.STALE.value,
         ):
-            upstream_label = {"analyze": "分析", "mark": "标记", "rewrite": "改写"}.get(upstream.value, upstream.value)
+            from backend.app.i18n import t as _t
+            upstream_label = _t(f"stage.{upstream.value}", "zh")
             raise AppError(
                 ErrorCode.VALIDATION_ERROR,
-                f"请先完成「{upstream_label}」阶段",
-                details={"missing_upstream": upstream.value},
+                _t("error.upstream_required", "zh", upstream_label=upstream_label),
+                details={"missing_upstream": upstream.value, "message_key": "error.upstream_required"},
             )
 
     if stage in {StageName.ANALYZE, StageName.MARK, StageName.REWRITE, StageName.ASSEMBLE}:

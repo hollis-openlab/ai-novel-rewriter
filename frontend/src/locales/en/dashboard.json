@@ -1,0 +1,19 @@
+{
+  "importNovel": "Import Novel",
+  "novelList": "Novel List",
+  "recentActivity": "Recent Activity",
+  "noActivity": "No activity yet",
+  "noActivityHint": "Progress will appear here while tasks are running",
+  "stats": {
+    "processing": "Processing"
+  },
+  "emptyState": {
+    "title": "Import your first novel",
+    "description": "Supports .txt and .epub formats, automatically enters the AI processing pipeline after import"
+  },
+  "activity": {
+    "stageCompleted": "Stage \"{{stage}}\" completed",
+    "stageFailed": "Stage \"{{stage}}\" failed",
+    "chapterCompleted": "Chapter {{index}} completed ({{stage}})"
+  }
+}

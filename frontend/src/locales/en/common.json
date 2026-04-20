@@ -1,0 +1,120 @@
+{
+  "nav": {
+    "dashboard": "Dashboard",
+    "novels": "Novels",
+    "config": "Config",
+    "providers": "Providers"
+  },
+  "status": {
+    "processing": "Processing",
+    "completed": "Completed",
+    "failed": "Failed",
+    "pending": "Pending",
+    "connected": "Connected",
+    "connectionFailed": "Connection Failed",
+    "untested": "Untested"
+  },
+  "action": {
+    "save": "Save",
+    "delete": "Delete",
+    "cancel": "Cancel",
+    "edit": "Edit",
+    "clear": "Clear",
+    "confirm": "Confirm",
+    "close": "Close",
+    "expand": "Expand",
+    "collapse": "Collapse",
+    "enable": "Enable",
+    "view": "View",
+    "import": "Import",
+    "export": "Export",
+    "retry": "Retry",
+    "refresh": "Refresh"
+  },
+  "time": {
+    "justNow": "Just now",
+    "minutesAgo": "{{count}} min ago",
+    "hoursAgo": "{{count}} hr ago",
+    "daysAgo": "{{count}} days ago"
+  },
+  "format": {
+    "tenThousandChars": "{{count}}0k chars",
+    "chars": "{{count}} chars",
+    "chapters": "{{count}} chapters",
+    "count": "{{count}} novels"
+  },
+  "upload": {
+    "dragOrClick": "Drag file here",
+    "orClickToSelect": "or click to select",
+    "dragOrClickToSelect": "Drag file here or click to select",
+    "supportedFormats": "Supports .txt / .epub",
+    "supportedFormatsTxtEpub": "Supports .txt / .epub",
+    "onlyTxtEpub": "Only .txt and .epub formats supported",
+    "uploading": "Uploading...",
+    "uploadingShort": "Uploading",
+    "uploadFailed": "Upload failed, please retry",
+    "startImport": "Start Import"
+  },
+  "theme": {
+    "switchToLight": "Switch to Light Mode",
+    "switchToDark": "Switch to Dark Mode"
+  },
+  "workerPool": {
+    "title": "Worker Pool",
+    "active": "Active",
+    "idle": "Idle",
+    "queue": "Queue",
+    "usage": "Usage",
+    "activeOf": "{{active}} / {{total}} active"
+  },
+  "rewriteStrategy": {
+    "expand": "Expand",
+    "rewrite": "Rewrite",
+    "condense": "Condense",
+    "preserve": "Preserve"
+  },
+  "diff": {
+    "title": "Git-style Diff",
+    "originalLabel": "Original",
+    "rewrittenLabel": "Rewritten",
+    "sideBySide": "Side by Side",
+    "inline": "Inline",
+    "switchToMode": "Switch to {{mode}} mode",
+    "charCount": "{{label}} Chars",
+    "lineCount": "{{label}} Lines",
+    "charsValue": "{{count}} chars",
+    "addedChars": "Added Chars",
+    "deletedChars": "Deleted Chars",
+    "addedCharsValue": "+{{count}} chars",
+    "deletedCharsValue": "-{{count}} chars",
+    "linesValue": "{{count}} lines",
+    "noContent": "No content to compare.",
+    "clickToExpand": "Click to expand",
+    "collapseUnchanged": "Collapse unchanged",
+    "foldUnchanged": "Fold unchanged",
+    "unchangedLines": "{{count}} unchanged lines",
+    "originalLines": "Original {{start}} - {{end}}",
+    "rewrittenLines": "Rewritten {{start}} - {{end}}",
+    "deletedLines": "{{count}} deleted lines",
+    "insertedLines": "{{count}} inserted lines",
+    "omittedLines": "{{count}} unchanged lines omitted",
+    "deletedAndInserted": "{{deleted}} deleted, {{inserted}} inserted",
+    "expandOrCollapse": "Expand or collapse"
+  },
+  "quality": {
+    "failedRatio": "Failed Ratio",
+    "warningCount": "Warning Count",
+    "failedRatioSuggestion": "Fix failed or rolled-back segments first to reduce the failure ratio",
+    "warningCountSuggestion": "Clear duplicate, out-of-range, or continuity warnings before exporting"
+  },
+  "sceneType": {
+    "战斗": "Combat",
+    "对话": "Dialogue",
+    "心理描写": "Inner Monologue",
+    "环境描写": "Environment",
+    "叙事过渡": "Narrative Transition",
+    "感情互动": "Emotional Interaction",
+    "回忆闪回": "Flashback",
+    "日常生活": "Daily Life"
+  }
+}

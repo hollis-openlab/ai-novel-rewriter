@@ -1,6 +1,8 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useTranslation } from 'react-i18next'
+import type { TFunction } from 'i18next'
 import {
   Upload,
   FileText,
@@ -21,19 +23,19 @@ import type { WSMessage, Novel } from '@/types'
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
-function formatChars(n: number): string {
-  if (n >= 10000) return `${(n / 10000).toFixed(1)}万字`
-  return `${n.toLocaleString()}字`
+function formatChars(n: number, t: TFunction): string {
+  if (n >= 10000) return t('common:format.tenThousandChars', { count: Math.round(n / 10000 * 10) / 10 })
+  return t('common:format.chars', { count: n.toLocaleString() })
 }
 
-function relativeTime(iso: string): string {
+function relativeTime(iso: string, t: TFunction): string {
   const diff = Date.now() - new Date(iso).getTime()
   const mins = Math.floor(diff / 60000)
-  if (mins < 1) return '刚刚'
-  if (mins < 60) return `${mins}分钟前`
+  if (mins < 1) return t('common:time.justNow')
+  if (mins < 60) return t('common:time.minutesAgo', { count: mins })
   const hrs = Math.floor(mins / 60)
-  if (hrs < 24) return `${hrs}小时前`
-  return `${Math.floor(hrs / 24)}天前`
+  if (hrs < 24) return t('common:time.hoursAgo', { count: hrs })
+  return t('common:time.daysAgo', { count: Math.floor(hrs / 24) })
 }
 
 // ── Activity Event type ───────────────────────────────────────────────────────
@@ -46,17 +48,17 @@ interface ActivityEvent {
   novel_id?: string
 }
 
-function wsMessageToActivity(msg: WSMessage): ActivityEvent | null {
+function wsMessageToActivity(msg: WSMessage, t: TFunction): ActivityEvent | null {
   const base = { id: `${Date.now()}-${Math.random()}`, time: Date.now() }
   switch (msg.type) {
     case 'stage_completed':
-      return { ...base, type: 'completed', label: `「${msg.stage}」阶段完成`, novel_id: msg.novel_id }
+      return { ...base, type: 'completed', label: t('dashboard:activity.stageCompleted', { stage: msg.stage }), novel_id: msg.novel_id }
     case 'stage_failed':
-      return { ...base, type: 'failed', label: `「${msg.stage}」阶段失败`, novel_id: msg.novel_id }
+      return { ...base, type: 'failed', label: t('dashboard:activity.stageFailed', { stage: msg.stage }), novel_id: msg.novel_id }
     case 'stage_progress':
       return { ...base, type: 'progress', label: `${msg.stage} ${msg.percentage ?? 0}%`, novel_id: msg.novel_id }
     case 'chapter_completed':
-      return { ...base, type: 'chapter', label: `第${msg.chapter_index + 1}章完成 (${msg.stage})`, novel_id: msg.novel_id }
+      return { ...base, type: 'chapter', label: t('dashboard:activity.chapterCompleted', { index: msg.chapter_index + 1, stage: msg.stage }), novel_id: msg.novel_id }
     default:
       return null
   }
@@ -96,12 +98,13 @@ function StatsCard({ label, value, icon, iconBg }: StatsCardProps) {
 // ── Status Badge ──────────────────────────────────────────────────────────────
 
 function StatusBadge({ status, stage, percent }: { status: string; stage?: string; percent?: number }) {
+  const { t } = useTranslation('common')
   if (status === 'processing' || status === 'running') {
     return (
       <div className="flex items-center gap-2 bg-accent/10 text-accent rounded-full px-3 py-1">
         <Loader2 className="w-3 h-3 animate-spin" strokeWidth={2} />
         <span className="text-caption font-medium">
-          {stage ? `${stage} ${percent != null ? Math.round(percent) + '%' : ''}` : '进行中'}
+          {stage ? `${stage} ${percent != null ? Math.round(percent) + '%' : ''}` : t('status.processing')}
         </span>
       </div>
     )
@@ -110,7 +113,7 @@ function StatusBadge({ status, stage, percent }: { status: string; stage?: strin
     return (
       <div className="flex items-center gap-1.5 bg-success/10 text-success rounded-full px-3 py-1">
         <CheckCircle className="w-3 h-3" strokeWidth={2} />
-        <span className="text-caption font-medium">已完成</span>
+        <span className="text-caption font-medium">{t('status.completed')}</span>
       </div>
     )
   }
@@ -118,14 +121,14 @@ function StatusBadge({ status, stage, percent }: { status: string; stage?: strin
     return (
       <div className="flex items-center gap-1.5 bg-error/10 text-error rounded-full px-3 py-1">
         <AlertCircle className="w-3 h-3" strokeWidth={2} />
-        <span className="text-caption font-medium">失败</span>
+        <span className="text-caption font-medium">{t('status.failed')}</span>
       </div>
     )
   }
   return (
     <div className="flex items-center gap-1.5 bg-subtle text-secondary rounded-full px-3 py-1">
       <Clock className="w-3 h-3" strokeWidth={1.5} />
-      <span className="text-caption font-medium">待处理</span>
+      <span className="text-caption font-medium">{t('status.pending')}</span>
     </div>
   )
 }
@@ -223,6 +226,7 @@ export function deriveNovelStatus(novel: Novel, progressMap: Record<string, { st
 
 function NovelRow({ novel, progressMap }: NovelRowProps) {
   const navigate = useNavigate()
+  const { t } = useTranslation(['dashboard', 'common'])
   const [hovered, setHovered] = useState(false)
   const derived = deriveNovelStatus(novel, progressMap)
   const status = derived.status
@@ -247,7 +251,7 @@ function NovelRow({ novel, progressMap }: NovelRowProps) {
         <div className="min-w-0">
           <p className="text-title-2 font-semibold text-primary truncate">《{novel.title}》</p>
           <p className="text-callout text-secondary mt-0.5">
-            {formatChars(novel.total_chars)} · {novel.chapter_count ?? '—'} 章 · {relativeTime(novel.imported_at)}
+            {formatChars(novel.total_chars, t)} · {novel.chapter_count != null ? t('common:format.chapters', { count: novel.chapter_count }) : '—'} · {relativeTime(novel.imported_at, t)}
           </p>
         </div>
         <div className="flex items-center gap-3 flex-shrink-0">
@@ -267,6 +271,7 @@ function NovelRow({ novel, progressMap }: NovelRowProps) {
 
 function WorkerMonitor() {
   const { active, idle, queue_size, update } = useWorkerStore()
+  const { t } = useTranslation('common')
 
   // Poll the workers API every 5 seconds to keep the store fresh
   useEffect(() => {
@@ -292,28 +297,28 @@ function WorkerMonitor() {
         <div className="p-2 bg-ai/10 rounded-lg">
           <Users className="w-4 h-4 text-ai" strokeWidth={1.5} />
         </div>
-        <h3 className="text-title-3 font-semibold text-primary">Worker 池</h3>
+        <h3 className="text-title-3 font-semibold text-primary">{t('workerPool.title')}</h3>
       </div>
 
       <div className="space-y-4">
         <div className="grid grid-cols-3 gap-3">
           <div className="text-center p-3 bg-page rounded-xl">
             <p className="text-title-2 font-bold text-success">{active}</p>
-            <p className="text-caption text-secondary">活跃</p>
+            <p className="text-caption text-secondary">{t('workerPool.active')}</p>
           </div>
           <div className="text-center p-3 bg-page rounded-xl">
             <p className="text-title-2 font-bold text-secondary">{idle}</p>
-            <p className="text-caption text-secondary">空闲</p>
+            <p className="text-caption text-secondary">{t('workerPool.idle')}</p>
           </div>
           <div className="text-center p-3 bg-page rounded-xl">
             <p className="text-title-2 font-bold text-warning">{queue_size}</p>
-            <p className="text-caption text-secondary">队列</p>
+            <p className="text-caption text-secondary">{t('workerPool.queue')}</p>
           </div>
         </div>
 
         <div>
           <div className="flex justify-between items-center mb-1.5">
-            <span className="text-caption text-secondary">使用率</span>
+            <span className="text-caption text-secondary">{t('workerPool.usage')}</span>
             <span className="text-caption font-medium text-primary">{usagePercent}%</span>
           </div>
           <div className="h-2 bg-subtle rounded-full overflow-hidden">
@@ -327,7 +332,7 @@ function WorkerMonitor() {
         {total > 0 && (
           <div className="flex items-center gap-2 text-caption text-secondary">
             <TrendingUp className="w-3.5 h-3.5" strokeWidth={1.5} />
-            <span>{active} / {total} 活跃</span>
+            <span>{t('workerPool.activeOf', { active, total })}</span>
           </div>
         )}
       </div>
@@ -338,6 +343,8 @@ function WorkerMonitor() {
 // ── Activity Feed ─────────────────────────────────────────────────────────────
 
 function ActivityFeed({ events }: { events: ActivityEvent[] }) {
+  const { t } = useTranslation(['dashboard', 'common'])
+
   function activityIcon(type: string) {
     if (type === 'completed' || type === 'chapter') return <CheckCircle className="w-3.5 h-3.5 text-success flex-shrink-0" strokeWidth={1.5} />
     if (type === 'failed') return <AlertCircle className="w-3.5 h-3.5 text-error flex-shrink-0" strokeWidth={1.5} />
@@ -350,14 +357,14 @@ function ActivityFeed({ events }: { events: ActivityEvent[] }) {
         <div className="p-2 bg-accent/10 rounded-lg">
           <Activity className="w-4 h-4 text-accent" strokeWidth={1.5} />
         </div>
-        <h3 className="text-title-3 font-semibold text-primary">最近动态</h3>
+        <h3 className="text-title-3 font-semibold text-primary">{t('dashboard:recentActivity')}</h3>
       </div>
 
       {events.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-8 text-center">
           <Activity className="w-8 h-8 text-tertiary mb-3" strokeWidth={1.5} />
-          <p className="text-callout text-secondary">暂无活动记录</p>
-          <p className="text-caption text-tertiary mt-1">处理任务时将在此显示进度</p>
+          <p className="text-callout text-secondary">{t('dashboard:noActivity')}</p>
+          <p className="text-caption text-tertiary mt-1">{t('dashboard:noActivityHint')}</p>
         </div>
       ) : (
         <div className="space-y-3">
@@ -368,7 +375,7 @@ function ActivityFeed({ events }: { events: ActivityEvent[] }) {
                 <p className="text-callout text-primary truncate">{ev.label}</p>
               </div>
               <p className="text-caption text-tertiary flex-shrink-0 whitespace-nowrap">
-                {relativeTime(new Date(ev.time).toISOString())}
+                {relativeTime(new Date(ev.time).toISOString(), t)}
               </p>
             </div>
           ))}
@@ -386,6 +393,7 @@ interface ImportModalProps {
 }
 
 function ImportModal({ onClose, onSuccess }: ImportModalProps) {
+  const { t } = useTranslation(['dashboard', 'common'])
   const [file, setFile] = useState<File | null>(null)
   const [dragging, setDragging] = useState(false)
   const [progress, setProgress] = useState(0)
@@ -395,7 +403,7 @@ function ImportModal({ onClose, onSuccess }: ImportModalProps) {
 
   const handleFile = (f: File) => {
     if (!f.name.match(/\.(txt|epub)$/i)) {
-      setError('仅支持 .txt 和 .epub 格式')
+      setError(t('common:upload.onlyTxtEpub'))
       return
     }
     setError(null)
@@ -417,7 +425,7 @@ function ImportModal({ onClose, onSuccess }: ImportModalProps) {
       const result = await uploadFile(file, (pct) => setProgress(pct))
       onSuccess(result.novel_id)
     } catch (err: any) {
-      setError(err?.message ?? '上传失败，请重试')
+      setError(err?.message ?? t('common:upload.uploadFailed'))
       setUploading(false)
     }
   }
@@ -437,7 +445,7 @@ function ImportModal({ onClose, onSuccess }: ImportModalProps) {
       >
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-5 border-b border-subtle">
-          <h2 className="text-title-2 font-semibold text-primary">导入小说</h2>
+          <h2 className="text-title-2 font-semibold text-primary">{t('dashboard:importNovel')}</h2>
           <button
             className="p-1.5 hover:bg-subtle rounded-lg transition-colors duration-150 cursor-pointer"
             onClick={onClose}
@@ -484,9 +492,9 @@ function ImportModal({ onClose, onSuccess }: ImportModalProps) {
                   </div>
                 </div>
                 <div>
-                  <p className="text-body-bold text-primary">拖拽文件到此处</p>
-                  <p className="text-callout text-secondary mt-1">或点击选择文件</p>
-                  <p className="text-caption text-tertiary mt-2">支持 .txt · .epub</p>
+                  <p className="text-body-bold text-primary">{t('common:upload.dragOrClick')}</p>
+                  <p className="text-callout text-secondary mt-1">{t('common:upload.orClickToSelect')}</p>
+                  <p className="text-caption text-tertiary mt-2">{t('common:upload.supportedFormats')}</p>
                 </div>
               </div>
             )}
@@ -496,7 +504,7 @@ function ImportModal({ onClose, onSuccess }: ImportModalProps) {
           {uploading && (
             <div className="space-y-1.5">
               <div className="flex justify-between">
-                <span className="text-caption text-secondary">上传中...</span>
+                <span className="text-caption text-secondary">{t('common:upload.uploading')}</span>
                 <span className="text-caption font-medium text-primary">{Math.round(progress)}%</span>
               </div>
               <div className="h-2 bg-subtle rounded-full overflow-hidden">
@@ -524,7 +532,7 @@ function ImportModal({ onClose, onSuccess }: ImportModalProps) {
             onClick={onClose}
             disabled={uploading}
           >
-            取消
+            {t('common:action.cancel')}
           </button>
           <button
             className="button-primary text-callout flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
@@ -534,12 +542,12 @@ function ImportModal({ onClose, onSuccess }: ImportModalProps) {
             {uploading ? (
               <>
                 <Loader2 className="w-4 h-4 animate-spin" strokeWidth={1.5} />
-                <span>上传中</span>
+                <span>{t('common:upload.uploadingShort')}</span>
               </>
             ) : (
               <>
                 <Upload className="w-4 h-4" strokeWidth={1.5} />
-                <span>开始导入</span>
+                <span>{t('common:upload.startImport')}</span>
               </>
             )}
           </button>
@@ -552,6 +560,7 @@ function ImportModal({ onClose, onSuccess }: ImportModalProps) {
 // ── Empty State ───────────────────────────────────────────────────────────────
 
 function EmptyState({ onImport }: { onImport: () => void }) {
+  const { t } = useTranslation('dashboard')
   return (
     <div className="flex flex-col items-center justify-center py-24 space-y-6">
       <div className="relative">
@@ -564,9 +573,9 @@ function EmptyState({ onImport }: { onImport: () => void }) {
       </div>
 
       <div className="text-center space-y-2">
-        <h2 className="text-title-2 font-semibold text-primary">导入你的第一部小说</h2>
+        <h2 className="text-title-2 font-semibold text-primary">{t('emptyState.title')}</h2>
         <p className="text-callout text-secondary max-w-xs">
-          支持 .txt 和 .epub 格式，导入后自动进入 AI 处理流水线
+          {t('emptyState.description')}
         </p>
       </div>
 
@@ -575,7 +584,7 @@ function EmptyState({ onImport }: { onImport: () => void }) {
         onClick={onImport}
       >
         <Upload className="w-5 h-5" strokeWidth={1.5} />
-        <span>导入小说</span>
+        <span>{t('importNovel')}</span>
       </button>
     </div>
   )
@@ -586,6 +595,7 @@ function EmptyState({ onImport }: { onImport: () => void }) {
 export function Dashboard() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
+  const { t } = useTranslation(['dashboard', 'common'])
   const [showImport, setShowImport] = useState(false)
   const [activities, setActivities] = useState<ActivityEvent[]>([])
   // novelId → { stage, percent }
@@ -640,14 +650,14 @@ export function Dashboard() {
         })
       }
 
-      const ev = wsMessageToActivity(msg)
+      const ev = wsMessageToActivity(msg, t)
       if (ev) addActivity(ev)
     })
 
     return () => {
       unsubscribe()
     }
-  }, [queryClient, addActivity])
+  }, [queryClient, addActivity, t])
 
   const handleImportSuccess = (novelId: string) => {
     setShowImport(false)
@@ -665,26 +675,26 @@ export function Dashboard() {
           onClick={() => setShowImport(true)}
         >
           <Upload className="w-4 h-4" strokeWidth={1.5} />
-          <span>导入小说</span>
+          <span>{t('dashboard:importNovel')}</span>
         </button>
       </div>
 
       {/* Stats Row */}
       <div className="grid grid-cols-3 gap-5">
         <StatsCard
-          label="处理中"
+          label={t('dashboard:stats.processing')}
           value={processingCount}
           icon={<Loader2 className="w-5 h-5 text-accent animate-spin" strokeWidth={1.5} />}
           iconBg="bg-accent/10"
         />
         <StatsCard
-          label="已完成"
+          label={t('common:status.completed')}
           value={completedCount}
           icon={<CheckCircle className="w-5 h-5 text-success" strokeWidth={1.5} />}
           iconBg="bg-success/10"
         />
         <StatsCard
-          label="失败"
+          label={t('common:status.failed')}
           value={failedCount}
           icon={<AlertCircle className="w-5 h-5 text-error" strokeWidth={1.5} />}
           iconBg="bg-error/10"
@@ -708,8 +718,8 @@ export function Dashboard() {
       ) : (
         <div className="space-y-3">
           <div className="flex items-center justify-between">
-            <h2 className="text-title-3 font-semibold text-primary">小说列表</h2>
-            <span className="text-caption text-secondary">{novels.length} 部</span>
+            <h2 className="text-title-3 font-semibold text-primary">{t('dashboard:novelList')}</h2>
+            <span className="text-caption text-secondary">{t('common:format.count', { count: novels.length })}</span>
           </div>
           <div className="space-y-2">
             {novels.map(novel => (

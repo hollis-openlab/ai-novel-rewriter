@@ -13,6 +13,7 @@ import {
   Trash2,
   X,
 } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import { providers as providersApi } from '@/lib/api'
 import type {
   CreateProviderForm,
@@ -21,11 +22,6 @@ import type {
   ProviderType,
   TestConnectionRequest,
 } from '@/types'
-
-const PROVIDER_LABELS: Record<ProviderType, string> = {
-  openai: 'OpenAI',
-  openai_compatible: 'OpenAI 兼容',
-}
 
 const PROVIDER_HINTS: Record<ProviderType, string> = {
   openai: 'https://api.openai.com/v1',
@@ -46,8 +42,8 @@ const parseOptionalNumber = (value: string) => {
   return Number.isFinite(next) ? next : null
 }
 
-const toProviderPayload = (state: ProviderModalState): CreateProviderForm => ({
-  name: state.name.trim() || PROVIDER_LABELS[state.providerType],
+const toProviderPayload = (state: ProviderModalState, fallbackName: string): CreateProviderForm => ({
+  name: state.name.trim() || fallbackName,
   provider_type: state.providerType,
   api_key: state.apiKey.trim() || undefined,
   base_url: state.baseUrl.trim(),
@@ -61,6 +57,14 @@ const toProviderPayload = (state: ProviderModalState): CreateProviderForm => ({
   tpm_limit: Math.max(1, Math.round(parseNumber(state.tpmLimit, 100000))),
 })
 
+function useProviderLabel() {
+  const { t } = useTranslation('providers')
+  return (type: ProviderType): string => {
+    if (type === 'openai') return 'OpenAI'
+    return t('providerLabel.openai_compatible')
+  }
+}
+
 function ProviderIcon({ type }: { type: ProviderType }) {
   return (
     <div className={`flex h-10 w-10 items-center justify-center rounded-xl ${type === 'openai' ? 'bg-primary' : 'bg-accent'}`}>
@@ -70,10 +74,11 @@ function ProviderIcon({ type }: { type: ProviderType }) {
 }
 
 function StatusDot({ status }: { status: 'connected' | 'error' | 'unknown' }) {
+  const { t } = useTranslation('common')
   const palette = {
-    connected: { dot: 'bg-success', text: 'text-success', label: '已连接' },
-    error: { dot: 'bg-error', text: 'text-error', label: '连接失败' },
-    unknown: { dot: 'bg-tertiary', text: 'text-secondary', label: '未测试' },
+    connected: { dot: 'bg-success', text: 'text-success', label: t('status.connected') },
+    error: { dot: 'bg-error', text: 'text-error', label: t('status.connectionFailed') },
+    unknown: { dot: 'bg-tertiary', text: 'text-secondary', label: t('status.untested') },
   }[status]
 
   return (
@@ -99,6 +104,8 @@ function ProviderCard({
   testResult?: ProviderTestResult
   testing?: boolean
 }) {
+  const { t } = useTranslation(['providers', 'common'])
+  const getLabel = useProviderLabel()
   const [confirmDelete, setConfirmDelete] = useState(false)
 
   const status: 'connected' | 'error' | 'unknown' = testResult
@@ -125,18 +132,18 @@ function ProviderCard({
       <div className="grid gap-3 md:grid-cols-2">
         <div className="rounded-xl bg-subtle px-3 py-2">
           <p className="text-caption text-secondary">Provider</p>
-          <p className="text-callout font-medium text-primary">{PROVIDER_LABELS[provider.provider_type]}</p>
+          <p className="text-callout font-medium text-primary">{getLabel(provider.provider_type)}</p>
         </div>
         <div className="rounded-xl bg-subtle px-3 py-2">
-          <p className="text-caption text-secondary">Base URL</p>
+          <p className="text-caption text-secondary">{t('field.baseUrl')}</p>
           <p className="truncate font-mono text-callout text-primary" title={provider.base_url}>{provider.base_url}</p>
         </div>
         <div className="rounded-xl bg-subtle px-3 py-2">
-          <p className="text-caption text-secondary">温度 / Max Tokens</p>
+          <p className="text-caption text-secondary">{t('field.temperatureMaxTokens')}</p>
           <p className="text-callout text-primary">{provider.temperature} / {provider.max_tokens}</p>
         </div>
         <div className="rounded-xl bg-subtle px-3 py-2">
-          <p className="text-caption text-secondary">RPM / TPM</p>
+          <p className="text-caption text-secondary">{t('field.rpmTpm')}</p>
           <p className="text-callout text-primary">{provider.rpm_limit} / {provider.tpm_limit}</p>
         </div>
       </div>
@@ -150,11 +157,11 @@ function ProviderCard({
             className="button-secondary flex items-center gap-2 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {testing ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
-            测试连接
+            {t('testConnection')}
           </button>
           {testResult && (
             <span className={`text-callout font-medium ${testResult.success ? 'text-success' : 'text-error'}`}>
-              {testResult.success ? `${testResult.latency_ms ?? 0}ms` : (testResult.error ?? '连接失败')}
+              {testResult.success ? `${testResult.latency_ms ?? 0}ms` : (testResult.error ?? t('connectionFailed'))}
             </span>
           )}
         </div>
@@ -166,24 +173,24 @@ function ProviderCard({
             className="flex items-center gap-1.5 text-callout text-accent transition hover:underline"
           >
             <Pencil className="h-4 w-4" />
-            编辑
+            {t('common:action.edit')}
           </button>
           {confirmDelete ? (
             <div className="flex items-center gap-2">
-              <span className="text-callout text-secondary">确认删除?</span>
+              <span className="text-callout text-secondary">{t('confirmDelete')}</span>
               <button
                 type="button"
                 onClick={() => onDelete(provider.id)}
                 className="text-callout font-medium text-error transition hover:underline"
               >
-                删除
+                {t('common:action.delete')}
               </button>
               <button
                 type="button"
                 onClick={() => setConfirmDelete(false)}
                 className="text-callout text-secondary transition hover:text-primary"
               >
-                取消
+                {t('common:action.cancel')}
               </button>
             </div>
           ) : (
@@ -193,7 +200,7 @@ function ProviderCard({
               className="flex items-center gap-1.5 text-callout text-error transition hover:underline"
             >
               <Trash2 className="h-4 w-4" />
-              删除
+              {t('common:action.delete')}
             </button>
           )}
         </div>
@@ -234,6 +241,8 @@ function ProviderModal({
   onSave: (payload: CreateProviderForm) => Promise<void> | void
   isSaving?: boolean
 }) {
+  const { t } = useTranslation(['providers', 'common'])
+  const getLabel = useProviderLabel()
   const isEdit = Boolean(editProvider)
 
   const [state, setState] = useState<ProviderModalState>(() => ({
@@ -361,14 +370,14 @@ function ProviderModal({
     } catch (error) {
       update({
         fetchState: 'error',
-        fetchError: error instanceof Error ? error.message : '获取模型列表失败',
+        fetchError: error instanceof Error ? error.message : t('fetchModelsFailed'),
       })
     }
   }
 
   const handleTestConnection = async () => {
     if (!canTest) {
-      update({ testState: 'error', testError: '请先选择模型并补全连接信息' })
+      update({ testState: 'error', testError: t('completeConnectionInfo') })
       return
     }
 
@@ -383,7 +392,7 @@ function ProviderModal({
         update({
           testState: result.success ? 'success' : 'error',
           testLatency: result.latency_ms ?? null,
-          testError: result.success ? '' : (result.error ?? '连接失败'),
+          testError: result.success ? '' : (result.error ?? t('connectionFailed')),
         })
         return
       }
@@ -398,18 +407,18 @@ function ProviderModal({
       update({
         testState: result.success ? 'success' : 'error',
         testLatency: result.latency_ms ?? null,
-        testError: result.success ? '' : (result.error ?? '连接失败'),
+        testError: result.success ? '' : (result.error ?? t('connectionFailed')),
       })
     } catch (error) {
       update({
         testState: 'error',
-        testError: error instanceof Error ? error.message : '连接失败',
+        testError: error instanceof Error ? error.message : t('connectionFailed'),
       })
     }
   }
 
   const handleSave = async () => {
-    await onSave(toProviderPayload(state))
+    await onSave(toProviderPayload(state, getLabel(state.providerType)))
   }
 
   return (
@@ -417,8 +426,8 @@ function ProviderModal({
       <div className="max-h-[90vh] w-full max-w-3xl overflow-y-auto rounded-2xl border border-border bg-white p-8 shadow-lg">
         <div className="mb-6 flex items-center justify-between gap-4">
           <div>
-            <h2 className="text-title-2 font-semibold text-primary">{isEdit ? '编辑提供商' : '添加提供商'}</h2>
-            <p className="mt-1 text-callout text-secondary">只支持 OpenAI 官方和 OpenAI 兼容提供商。</p>
+            <h2 className="text-title-2 font-semibold text-primary">{isEdit ? t('editProvider') : t('addProvider')}</h2>
+            <p className="mt-1 text-callout text-secondary">{t('onlyOpenAISupported')}</p>
           </div>
           <button
             type="button"
@@ -442,7 +451,7 @@ function ProviderModal({
               >
                 <ProviderIcon type={type} />
                 <span className={`text-callout font-medium ${state.providerType === type ? 'text-accent' : 'text-primary'}`}>
-                  {PROVIDER_LABELS[type]}
+                  {getLabel(type)}
                 </span>
               </button>
             ))}
@@ -450,16 +459,16 @@ function ProviderModal({
 
           <div className="grid gap-4 md:grid-cols-2">
             <label className="space-y-1">
-              <span className="text-callout text-secondary">名称</span>
+              <span className="text-callout text-secondary">{t('field.name')}</span>
               <input
                 value={state.name}
                 onChange={(e) => update({ name: e.target.value })}
-                placeholder={PROVIDER_LABELS[state.providerType]}
+                placeholder={getLabel(state.providerType)}
                 className="w-full rounded-xl border border-border px-3 py-2 text-body text-primary outline-none focus:border-accent"
               />
             </label>
             <label className="space-y-1">
-              <span className="text-callout text-secondary">Base URL</span>
+              <span className="text-callout text-secondary">{t('field.baseUrl')}</span>
               <input
                 value={state.baseUrl}
                 onChange={(e) => update({ baseUrl: e.target.value })}
@@ -470,13 +479,13 @@ function ProviderModal({
           </div>
 
           <div className="space-y-1">
-            <span className="text-callout text-secondary">API Key</span>
+            <span className="text-callout text-secondary">{t('field.apiKey')}</span>
             <div className="relative">
               <input
                 type={state.showKey ? 'text' : 'password'}
                 value={state.apiKey}
                 onChange={(e) => update({ apiKey: e.target.value })}
-                placeholder={isEdit ? '输入新 Key 或留空保持不变' : 'sk-...'}
+                placeholder={isEdit ? t('apiKeyNewOrEmpty') : 'sk-...'}
                 className="w-full rounded-xl border border-border px-3 py-2 pr-10 font-mono text-body text-primary outline-none focus:border-accent"
               />
               <button
@@ -488,7 +497,7 @@ function ProviderModal({
               </button>
             </div>
             {isEdit && (
-              <p className="text-caption text-tertiary">如果保持为空，系统会继续使用已保存的 API Key。</p>
+              <p className="text-caption text-tertiary">{t('apiKeyKeepSaved')}</p>
             )}
           </div>
 
@@ -501,7 +510,7 @@ function ProviderModal({
                 className="button-secondary flex items-center gap-2 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {state.fetchState === 'loading' ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
-                获取模型列表
+                {t('fetchModels')}
               </button>
               <button
                 type="button"
@@ -510,12 +519,12 @@ function ProviderModal({
                 className="button-secondary flex items-center gap-2 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {state.testState === 'testing' ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
-                测试连接
+                {t('testConnection')}
               </button>
               <span className="text-caption text-secondary">
                 {isEdit && !state.apiKey.trim()
-                  ? '保留当前 API Key 的情况下可复用 provider 拉取模型。'
-                  : '获取模型后可通过搜索快速筛选并选择。'}
+                  ? t('fetchModelsHintEdit')
+                  : t('fetchModelsHintNew')}
               </span>
             </div>
 
@@ -526,25 +535,25 @@ function ProviderModal({
                   ? 'border-green-200 bg-green-50 text-green-700'
                   : 'border-border bg-white text-secondary'
             }`}>
-              {state.fetchError || state.testError || (state.testState === 'success' ? `连接成功${state.testLatency != null ? ` · ${state.testLatency}ms` : ''}` : '先获取模型，再选择合适的模型进行测试。')}
+              {state.fetchError || state.testError || (state.testState === 'success' ? `${t('connectionSuccess')}${state.testLatency != null ? ` · ${state.testLatency}ms` : ''}` : t('fetchModelsFirst'))}
             </div>
 
             <div className="grid gap-3 md:grid-cols-2">
               <label className="space-y-1">
-                <span className="text-caption text-secondary">模型名称</span>
+                <span className="text-caption text-secondary">{t('field.modelName')}</span>
                 <input
                   value={state.selectedModel}
                   onChange={(e) => update({ selectedModel: e.target.value })}
-                  placeholder="从列表中选择，或手动输入"
+                  placeholder={t('selectOrTypeModel')}
                   className="w-full rounded-xl border border-border bg-white px-3 py-2 text-body text-primary outline-none focus:border-accent"
                 />
               </label>
               <label className="space-y-1">
-                <span className="text-caption text-secondary">搜索模型</span>
+                <span className="text-caption text-secondary">{t('field.searchModel')}</span>
                 <input
                   value={state.modelSearch}
                   onChange={(e) => setState((prev) => ({ ...prev, modelSearch: e.target.value }))}
-                  placeholder="输入关键字模糊搜索"
+                  placeholder={t('searchModelPlaceholder')}
                   className="w-full rounded-xl border border-border bg-white px-3 py-2 text-body text-primary outline-none focus:border-accent"
                 />
               </label>
@@ -552,17 +561,17 @@ function ProviderModal({
 
             <div className="space-y-2">
               <div className="flex items-center justify-between">
-                <p className="text-callout font-medium text-primary">模型列表</p>
-                <p className="text-caption text-secondary">{filteredModels.length} 个候选</p>
+                <p className="text-callout font-medium text-primary">{t('modelList')}</p>
+                <p className="text-caption text-secondary">{t('candidateCount', { count: filteredModels.length })}</p>
               </div>
               <div className="max-h-56 overflow-y-auto rounded-xl border border-border bg-white p-2">
                 {state.availableModels.length === 0 ? (
                   <div className="rounded-lg border border-dashed border-border px-4 py-6 text-center text-caption text-secondary">
-                    还没有模型列表，请先点击“获取模型列表”。
+                    {t('noModelsFetched')}
                   </div>
                 ) : filteredModels.length === 0 ? (
                   <div className="rounded-lg border border-dashed border-border px-4 py-6 text-center text-caption text-secondary">
-                    没有匹配的模型。
+                    {t('noMatchingModels')}
                   </div>
                 ) : (
                   filteredModels.map((model) => (
@@ -619,14 +628,14 @@ function ProviderModal({
                 value={state.topP}
                 onChange={(e) => update({ topP: e.target.value })}
                 className="w-full rounded-xl border border-border px-3 py-2 text-body text-primary outline-none focus:border-accent"
-                placeholder="可选"
+                placeholder={t('field.optional')}
               />
             </label>
           </div>
 
           <div className="grid gap-4 md:grid-cols-2">
             <label className="space-y-1">
-              <span className="text-callout text-secondary">RPM 限制</span>
+              <span className="text-callout text-secondary">{t('field.rpmLimit')}</span>
               <input
                 type="number"
                 min="1"
@@ -637,7 +646,7 @@ function ProviderModal({
               />
             </label>
             <label className="space-y-1">
-              <span className="text-callout text-secondary">TPM 限制</span>
+              <span className="text-callout text-secondary">{t('field.tpmLimit')}</span>
               <input
                 type="number"
                 min="1"
@@ -655,7 +664,7 @@ function ProviderModal({
               onClick={onClose}
               className="button-secondary"
             >
-              取消
+              {t('common:action.cancel')}
             </button>
             <button
               type="button"
@@ -663,13 +672,13 @@ function ProviderModal({
               disabled={isSaving || !state.selectedModel.trim() || state.testState !== 'success'}
               className="button-primary disabled:cursor-not-allowed disabled:opacity-50"
             >
-              {isSaving ? '保存中...' : '保存'}
+              {isSaving ? t('saving') : t('common:action.save')}
             </button>
           </div>
 
           {isEdit && !state.apiKey.trim() && state.selectedModel !== editProvider?.model_name && (
             <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-caption text-amber-700">
-              你当前沿用的是已保存的 API Key。现在可以直接测试新模型，无需重复输入 Key。
+              {t('usingStoredKey')}
             </div>
           )}
         </div>
@@ -679,6 +688,7 @@ function ProviderModal({
 }
 
 export function Providers() {
+  const { t } = useTranslation('providers')
   const queryClient = useQueryClient()
   const { data: providerList = [], isLoading } = useQuery({
     queryKey: ['providers'],
@@ -737,7 +747,7 @@ export function Providers() {
         [id]: {
           status: 'failed',
           success: false,
-          error: error instanceof Error ? error.message : '连接失败',
+          error: error instanceof Error ? error.message : t('connectionFailed'),
         },
       }))
     } finally {
@@ -749,8 +759,8 @@ export function Providers() {
     <div className="space-y-8">
       <div className="flex items-center justify-between gap-6">
         <div>
-          <h1 className="text-display font-bold text-primary">LLM 提供商</h1>
-          <p className="mt-2 text-callout text-secondary">只保留 OpenAI 官方和 OpenAI 兼容 provider，模型参数和速率限制都在这里管理。</p>
+          <h1 className="text-display font-bold text-primary">{t('pageTitle')}</h1>
+          <p className="mt-2 text-callout text-secondary">{t('pageDescription')}</p>
         </div>
         <button
           type="button"
@@ -761,7 +771,7 @@ export function Providers() {
           className="button-primary flex items-center gap-2"
         >
           <Plus className="h-4 w-4" />
-          添加提供商
+          {t('addProvider')}
         </button>
       </div>
 
@@ -782,12 +792,12 @@ export function Providers() {
             <Server className="h-12 w-12 text-secondary" />
           </div>
           <div className="text-center">
-            <h2 className="text-title-2 font-semibold text-primary">暂无提供商</h2>
-            <p className="mt-2 text-callout text-secondary">先添加一个 OpenAI 或 OpenAI 兼容 provider，然后获取模型列表并测试连接。</p>
+            <h2 className="text-title-2 font-semibold text-primary">{t('noProviders')}</h2>
+            <p className="mt-2 text-callout text-secondary">{t('noProvidersHint')}</p>
           </div>
           <button type="button" onClick={() => setShowModal(true)} className="button-primary flex items-center gap-2">
             <Plus className="h-4 w-4" />
-            添加第一个提供商
+            {t('addFirstProvider')}
           </button>
         </div>
       )}

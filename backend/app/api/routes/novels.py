@@ -489,13 +489,13 @@ def _compare_html(chapters: list[dict[str, object]], risk_signature: dict[str, o
         assembled_text = html.escape(str(chapter.get("assembled_text") or ""))
         sections.append(
             "<section style='margin-bottom:28px;'>"
-            f"<h2 style='margin:0 0 12px;font-size:20px;'>第 {idx} 章 {title}</h2>"
+            f"<h2 style='margin:0 0 12px;font-size:20px;'>Chapter {idx} {title}</h2>"
             "<div style='display:grid;grid-template-columns:1fr 1fr;gap:12px;'>"
             "<article style='border:1px solid #e5e7eb;border-radius:8px;padding:10px;white-space:pre-wrap;'>"
-            "<h3 style='margin:0 0 8px;font-size:14px;'>原文</h3>"
+            "<h3 style='margin:0 0 8px;font-size:14px;'>Original</h3>"
             f"{original_text}</article>"
             "<article style='border:1px solid #e5e7eb;border-radius:8px;padding:10px;white-space:pre-wrap;'>"
-            "<h3 style='margin:0 0 8px;font-size:14px;'>改写</h3>"
+            "<h3 style='margin:0 0 8px;font-size:14px;'>Rewritten</h3>"
             f"{assembled_text}</article>"
             "</div></section>"
         )
@@ -581,14 +581,14 @@ def _build_epub_bytes(
             manifest_items.append(("cover-image", cover_href, cover_mime, "cover-image"))
 
     nav_links = "".join(
-        f"<li><a href='{html.escape(href)}'>第 {idx} 章</a></li>" for idx, href in enumerate(chapter_hrefs, start=1)
+        f"<li><a href='{html.escape(href)}'>Chapter {idx}</a></li>" for idx, href in enumerate(chapter_hrefs, start=1)
     )
     nav_doc = (
         "<?xml version='1.0' encoding='utf-8'?>"
         "<!DOCTYPE html>"
         "<html xmlns='http://www.w3.org/1999/xhtml' xmlns:epub='http://www.idpf.org/2007/ops'>"
         "<head><meta charset='utf-8'/><title>Table of Contents</title></head>"
-        "<body><nav epub:type='toc'><h1>目录</h1><ol>"
+        "<body><nav epub:type='toc'><h1>Table of Contents</h1><ol>"
         f"{nav_links}</ol></nav></body></html>"
     )
 

@@ -1,0 +1,120 @@
+{
+  "nav": {
+    "dashboard": "仪表盘",
+    "novels": "小说管理",
+    "config": "配置",
+    "providers": "模型配置"
+  },
+  "status": {
+    "processing": "进行中",
+    "completed": "已完成",
+    "failed": "失败",
+    "pending": "待处理",
+    "connected": "已连接",
+    "connectionFailed": "连接失败",
+    "untested": "未测试"
+  },
+  "action": {
+    "save": "保存",
+    "delete": "删除",
+    "cancel": "取消",
+    "edit": "编辑",
+    "clear": "清空",
+    "confirm": "确认",
+    "close": "关闭",
+    "expand": "展开",
+    "collapse": "收起",
+    "enable": "启用",
+    "view": "查看",
+    "import": "导入",
+    "export": "导出",
+    "retry": "重试",
+    "refresh": "刷新"
+  },
+  "time": {
+    "justNow": "刚刚",
+    "minutesAgo": "{{count}}分钟前",
+    "hoursAgo": "{{count}}小时前",
+    "daysAgo": "{{count}}天前"
+  },
+  "format": {
+    "tenThousandChars": "{{count}}万字",
+    "chars": "{{count}}字",
+    "chapters": "{{count}} 章",
+    "count": "{{count}} 部"
+  },
+  "upload": {
+    "dragOrClick": "拖拽文件到此处",
+    "orClickToSelect": "或点击选择文件",
+    "dragOrClickToSelect": "拖拽文件到这里或点击选择",
+    "supportedFormats": "支持 .txt · .epub",
+    "supportedFormatsTxtEpub": "支持 .txt / .epub",
+    "onlyTxtEpub": "仅支持 .txt 和 .epub 格式",
+    "uploading": "上传中...",
+    "uploadingShort": "上传中",
+    "uploadFailed": "上传失败，请重试",
+    "startImport": "开始导入"
+  },
+  "theme": {
+    "switchToLight": "切换到浅色模式",
+    "switchToDark": "切换到深色模式"
+  },
+  "workerPool": {
+    "title": "Worker 池",
+    "active": "活跃",
+    "idle": "空闲",
+    "queue": "队列",
+    "usage": "使用率",
+    "activeOf": "{{active}} / {{total}} 活跃"
+  },
+  "rewriteStrategy": {
+    "expand": "拓展",
+    "rewrite": "改写",
+    "condense": "精简",
+    "preserve": "保留"
+  },
+  "diff": {
+    "title": "Git 风格 Diff",
+    "originalLabel": "原文",
+    "rewrittenLabel": "改写稿",
+    "sideBySide": "并排",
+    "inline": "行内",
+    "switchToMode": "切换到{{mode}}模式",
+    "charCount": "{{label}}字数",
+    "lineCount": "{{label}}行数",
+    "charsValue": "{{count}} 字",
+    "addedChars": "新增字数",
+    "deletedChars": "删除字数",
+    "addedCharsValue": "+{{count}} 字",
+    "deletedCharsValue": "-{{count}} 字",
+    "linesValue": "{{count}} 行",
+    "noContent": "没有可比较的内容。",
+    "clickToExpand": "点击展开",
+    "collapseUnchanged": "收起未变内容",
+    "foldUnchanged": "折叠未变内容",
+    "unchangedLines": "未变 {{count}} 行",
+    "originalLines": "原文 {{start}} - {{end}}",
+    "rewrittenLines": "改写 {{start}} - {{end}}",
+    "deletedLines": "删除 {{count}} 行",
+    "insertedLines": "新增 {{count}} 行",
+    "omittedLines": "省略 {{count}} 行未变内容",
+    "deletedAndInserted": "删除 {{deleted}} 行，新增 {{inserted}} 行",
+    "expandOrCollapse": "展开或收起"
+  },
+  "quality": {
+    "failedRatio": "失败率",
+    "warningCount": "告警数",
+    "failedRatioSuggestion": "优先修复 failed 或回退段落，降低失败占比",
+    "warningCountSuggestion": "清理重复段落、范围越界或连续性告警后再导出"
+  },
+  "sceneType": {
+    "战斗": "战斗",
+    "对话": "对话",
+    "心理描写": "心理描写",
+    "环境描写": "环境描写",
+    "叙事过渡": "叙事过渡",
+    "感情互动": "感情互动",
+    "回忆闪回": "回忆闪回",
+    "日常生活": "日常生活"
+  }
+}

@@ -1,0 +1,19 @@
+{
+  "importNovel": "导入小说",
+  "novelList": "小说列表",
+  "recentActivity": "最近动态",
+  "noActivity": "暂无活动记录",
+  "noActivityHint": "处理任务时将在此显示进度",
+  "stats": {
+    "processing": "处理中"
+  },
+  "emptyState": {
+    "title": "导入你的第一部小说",
+    "description": "支持 .txt 和 .epub 格式，导入后自动进入 AI 处理流水线"
+  },
+  "activity": {
+    "stageCompleted": "「{{stage}}」阶段完成",
+    "stageFailed": "「{{stage}}」阶段失败",
+    "chapterCompleted": "第{{index}}章完成 ({{stage}})"
+  }
+}

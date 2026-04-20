@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react'
 import { Fragment, useEffect, useMemo, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import type { DiffDocument, DiffGroup, DiffMode, DiffRow } from '@/lib/diff'
 import { buildGitDiff, formatDiffLineNumber } from '@/lib/diff'
 
@@ -21,9 +22,9 @@ interface GitDiffViewProps {
   emptyStateLabel?: string
 }
 
-const MODE_LABELS: Record<DiffMode, string> = {
-  'side-by-side': '并排',
-  inline: '行内',
+const MODE_KEYS: Record<DiffMode, string> = {
+  'side-by-side': 'diff.sideBySide',
+  inline: 'diff.inline',
 }
 
 interface CharacterSegment {
@@ -252,12 +253,6 @@ function countVisibleCharacters(text: string): number {
   return Array.from(text.replace(/\r\n?/g, '\n').replace(/\n/g, '')).length
 }
 
-function countChangedCharacters(segments: CharacterSegment[]): number {
-  return segments.reduce((total, segment) => {
-    if (!segment.changed) return total
-    return total + Array.from(segment.text).length
-  }, 0)
-}
 
 function countChangedVisibleCharacters(segments: CharacterSegment[]): number {
   return segments.reduce((total, segment) => {
@@ -446,15 +441,17 @@ function ModeToggle({
   value: DiffMode
   onChange: (mode: DiffMode) => void
 }) {
+  const { t } = useTranslation('common')
   return (
     <div className="inline-flex rounded-full border border-border bg-subtle p-1">
-      {(Object.keys(MODE_LABELS) as DiffMode[]).map((mode) => {
+      {(Object.keys(MODE_KEYS) as DiffMode[]).map((mode) => {
         const active = value === mode
+        const label = t(MODE_KEYS[mode])
         return (
           <button
             key={mode}
             type="button"
-            aria-label={`切换到${MODE_LABELS[mode]}模式`}
+            aria-label={t('diff.switchToMode', { mode: label })}
             aria-pressed={active}
             onClick={() => onChange(mode)}
             className={`rounded-full px-3 py-1.5 text-caption font-medium transition-colors ${
@@ -463,7 +460,7 @@ function ModeToggle({
                 : 'text-secondary hover:text-primary'
             }`}
           >
-            {MODE_LABELS[mode]}
+            {label}
           </button>
         )
       })}
@@ -486,29 +483,36 @@ function DiffRowBadge({
   )
 }
 
-function renderCollapsedGroup({
+function CollapsedGroup({
   group,
   onToggle,
 }: {
   group: DiffGroup
   onToggle: () => void
 }) {
+  const { t } = useTranslation('common')
+  const summaryText = group.kind === 'equal'
+    ? t('diff.omittedLines', { count: group.lines.length })
+    : t('diff.deletedAndInserted', {
+        deleted: group.lines.filter((l) => l.kind === 'delete').length,
+        inserted: group.lines.filter((l) => l.kind === 'insert').length,
+      })
   return (
     <button
       type="button"
-      aria-label={`展开或收起 ${group.summary}`}
+      aria-label={`${t('diff.expandOrCollapse')} ${summaryText}`}
       aria-expanded={false}
       onClick={onToggle}
       className="flex w-full items-center justify-between gap-3 rounded-2xl border border-dashed border-border bg-subtle px-4 py-3 text-left transition-colors hover:border-accent/40 hover:bg-accent/5"
     >
       <div className="space-y-1">
-        <p className="text-callout font-medium text-primary">{group.summary}</p>
+        <p className="text-callout font-medium text-primary">{summaryText}</p>
         <p className="text-caption text-secondary">
-          原文 {group.startOldLine ?? '—'} - {group.endOldLine ?? '—'} · 改写 {group.startNewLine ?? '—'} - {group.endNewLine ?? '—'}
+          {t('diff.originalLines', { start: group.startOldLine ?? '—', end: group.endOldLine ?? '—' })} · {t('diff.rewrittenLines', { start: group.startNewLine ?? '—', end: group.endNewLine ?? '—' })}
         </p>
       </div>
       <span className="rounded-full bg-white px-3 py-1 text-caption text-secondary shadow-xs">
-        点击展开
+        {t('diff.clickToExpand')}
       </span>
     </button>
   )
@@ -607,14 +611,21 @@ function renderFlatPane({
   )
 }
 
-function renderGroupContent(
-  group: DiffGroup,
-  mode: DiffMode,
-  isCollapsed: boolean,
+function GroupContent({
+  group,
+  mode,
+  isCollapsed,
+  onToggle,
+}: {
+  group: DiffGroup
+  mode: DiffMode
+  isCollapsed: boolean
   onToggle: () => void
-) {
+}) {
+  const { t } = useTranslation('common')
+
   if (group.collapsible && isCollapsed) {
-    return renderCollapsedGroup({ group, onToggle })
+    return <CollapsedGroup group={group} onToggle={onToggle} />
   }
 
   if (mode === 'side-by-side') {
@@ -632,10 +643,10 @@ function renderGroupContent(
       {group.kind === 'change' && (
         <div className="flex flex-wrap gap-2 text-caption">
           <span className="rounded-full bg-error/10 px-2 py-1 text-error">
-            删除 {group.lines.filter((line) => line.kind === 'delete').length} 行
+            {t('diff.deletedLines', { count: group.lines.filter((line) => line.kind === 'delete').length })}
           </span>
           <span className="rounded-full bg-success/10 px-2 py-1 text-success">
-            新增 {group.lines.filter((line) => line.kind === 'insert').length} 行
+            {t('diff.insertedLines', { count: group.lines.filter((line) => line.kind === 'insert').length })}
           </span>
         </div>
       )}
@@ -645,11 +656,11 @@ function renderGroupContent(
       {group.collapsible && (
         <button
           type="button"
-          aria-label={`折叠 ${group.summary}`}
+          aria-label={t('diff.collapseUnchanged')}
           onClick={onToggle}
           className="inline-flex items-center gap-1 rounded-full border border-border bg-white px-3 py-1 text-caption text-secondary transition-colors hover:border-accent/40 hover:text-primary"
         >
-          收起未变内容
+          {t('diff.collapseUnchanged')}
         </button>
       )}
     </div>
@@ -659,9 +670,9 @@ function renderGroupContent(
 export function GitDiffView({
   oldText,
   newText,
-  title = 'Git 风格 Diff',
-  leftLabel = '原文',
-  rightLabel = '改写稿',
+  title,
+  leftLabel,
+  rightLabel,
   comparisonStyle = 'git',
   mode: controlledMode,
   defaultMode = 'side-by-side',
@@ -669,8 +680,13 @@ export function GitDiffView({
   collapseEqualGroupAfter = 8,
   showModeToggle = true,
   className,
-  emptyStateLabel = '没有可比较的内容。',
+  emptyStateLabel,
 }: GitDiffViewProps) {
+  const { t } = useTranslation('common')
+  const resolvedTitle = title ?? t('diff.title')
+  const resolvedLeftLabel = leftLabel ?? t('diff.originalLabel')
+  const resolvedRightLabel = rightLabel ?? t('diff.rewrittenLabel')
+  const resolvedEmptyLabel = emptyStateLabel ?? t('diff.noContent')
   const document = useMemo<DiffDocument>(
     () => buildGitDiff(oldText, newText, { collapseEqualGroupAfter }),
     [oldText, newText, collapseEqualGroupAfter]
@@ -734,16 +750,16 @@ export function GitDiffView({
     <section className={`flex min-h-0 flex-col rounded-2xl border border-border bg-subtle/40 ${className ?? ''}`}>
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border bg-white px-4 py-3">
         <div className="space-y-1">
-          <h3 className="text-title-3 font-semibold text-primary">{title}</h3>
+          <h3 className="text-title-3 font-semibold text-primary">{resolvedTitle}</h3>
           <div className="flex flex-wrap gap-2">
-            <DiffRowBadge label={`${leftLabel}字数`} value={`${characterStats.oldChars.toLocaleString()} 字`} />
-            <DiffRowBadge label={`${rightLabel}字数`} value={`${characterStats.newChars.toLocaleString()} 字`} />
-            <DiffRowBadge label="新增字数" value={`+${characterStats.addedChars.toLocaleString()} 字`} />
-            <DiffRowBadge label="删除字数" value={`-${characterStats.deletedChars.toLocaleString()} 字`} />
+            <DiffRowBadge label={t('diff.charCount', { label: resolvedLeftLabel })} value={t('diff.charsValue', { count: characterStats.oldChars.toLocaleString() })} />
+            <DiffRowBadge label={t('diff.charCount', { label: resolvedRightLabel })} value={t('diff.charsValue', { count: characterStats.newChars.toLocaleString() })} />
+            <DiffRowBadge label={t('diff.addedChars')} value={t('diff.addedCharsValue', { count: characterStats.addedChars.toLocaleString() })} />
+            <DiffRowBadge label={t('diff.deletedChars')} value={t('diff.deletedCharsValue', { count: characterStats.deletedChars.toLocaleString() })} />
             {comparisonStyle === 'git' && (
               <>
-                <DiffRowBadge label={`${leftLabel}行数`} value={`${stats.oldLines} 行`} />
-                <DiffRowBadge label={`${rightLabel}行数`} value={`${stats.newLines} 行`} />
+                <DiffRowBadge label={t('diff.lineCount', { label: resolvedLeftLabel })} value={t('diff.linesValue', { count: stats.oldLines })} />
+                <DiffRowBadge label={t('diff.lineCount', { label: resolvedRightLabel })} value={t('diff.linesValue', { count: stats.newLines })} />
               </>
             )}
           </div>
@@ -759,17 +775,17 @@ export function GitDiffView({
       <div className="flex-1 min-h-0 overflow-auto p-4">
         {!hasContent ? (
           <div className="flex min-h-[220px] items-center justify-center rounded-2xl border border-dashed border-border bg-white px-6 py-10 text-center text-callout text-secondary">
-            {emptyStateLabel}
+            {resolvedEmptyLabel}
           </div>
         ) : comparisonStyle === 'flat' && flatDocument ? (
           <div className="grid min-h-0 gap-4 md:grid-cols-2">
             {renderFlatPane({
-              label: leftLabel,
+              label: resolvedLeftLabel,
               side: 'left',
               segments: flatDocument.left,
             })}
             {renderFlatPane({
-              label: rightLabel,
+              label: resolvedRightLabel,
               side: 'right',
               segments: flatDocument.right,
             })}
@@ -781,32 +797,32 @@ export function GitDiffView({
               return (
                 <Fragment key={group.id}>
                   {group.collapsible && isCollapsed ? (
-                    renderGroupContent(group, mode, true, () => toggleGroup(group.id))
+                    <GroupContent group={group} mode={mode} isCollapsed onToggle={() => toggleGroup(group.id)} />
                   ) : (
                     <div className="space-y-2">
                       {group.kind === 'equal' && (
                         <div className="flex items-center justify-between gap-3">
                           <div className="flex flex-wrap gap-2">
                             <span className="rounded-full bg-white px-2.5 py-1 text-caption text-secondary shadow-xs">
-                              未变 {group.lines.length} 行
+                              {t('diff.unchangedLines', { count: group.lines.length })}
                             </span>
                             <span className="rounded-full bg-white px-2.5 py-1 text-caption text-secondary shadow-xs">
-                              原文 {group.startOldLine ?? '—'} - {group.endOldLine ?? '—'}
+                              {t('diff.originalLines', { start: group.startOldLine ?? '—', end: group.endOldLine ?? '—' })}
                             </span>
                           </div>
                           {group.collapsible && (
                             <button
                               type="button"
-                              aria-label={`折叠 ${group.summary}`}
+                              aria-label={t('diff.foldUnchanged')}
                               onClick={() => toggleGroup(group.id)}
                               className="rounded-full border border-border bg-white px-3 py-1 text-caption text-secondary transition-colors hover:border-accent/40 hover:text-primary"
                             >
-                              折叠未变内容
+                              {t('diff.foldUnchanged')}
                             </button>
                           )}
                         </div>
                       )}
-                      {renderGroupContent(group, mode, false, () => toggleGroup(group.id))}
+                      <GroupContent group={group} mode={mode} isCollapsed={false} onToggle={() => toggleGroup(group.id)} />
                     </div>
                   )}
                 </Fragment>

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useTranslation } from 'react-i18next'
 import {
   CheckCircle2,
   Download,
@@ -49,12 +50,6 @@ type RewriteRuleForm = {
 
 const REWRITE_STRATEGY_ORDER: RewriteStrategy[] = ['expand', 'rewrite', 'condense', 'preserve']
 
-const REWRITE_STRATEGY_LABELS: Record<RewriteStrategy, string> = {
-  expand: '拓展',
-  rewrite: '改写',
-  condense: '精简',
-  preserve: '保留',
-}
 const SAVE_SPINNER_STYLE = { animationDuration: '2.2s' } as const
 
 const STORAGE_FILENAME = 'ai-novel-config.json'
@@ -69,9 +64,6 @@ const normalizeRewriteStrategies = (strategies: RewriteStrategy[] | undefined, f
 }
 
 const getPrimaryRewriteStrategy = (strategies: RewriteStrategy[]) => normalizeRewriteStrategies(strategies)[0] ?? 'rewrite'
-
-const summarizeRewriteStrategies = (strategies: RewriteStrategy[]) =>
-  normalizeRewriteStrategies(strategies).map((strategy) => REWRITE_STRATEGY_LABELS[strategy]).join('、')
 
 const defaultSceneRule = (): SceneRuleForm => ({
   uiId: createUiId(),
@@ -88,6 +80,7 @@ const defaultRewriteRule = (sceneType = ''): RewriteRuleForm => ({
   strategies: ['expand', 'rewrite'],
   rewrite_guidance: '',
   target_ratio: '1',
+  target_chars: 2000,
   priority: '0',
   enabled: true,
   isNew: true,
@@ -176,6 +169,7 @@ function SectionCard({
 }
 
 export function Config() {
+  const { t } = useTranslation(['config', 'common'])
   const queryClient = useQueryClient()
   const { data: snapshot } = useQuery({
     queryKey: ['config', 'snapshot'],
@@ -277,7 +271,7 @@ export function Config() {
     },
     onError: (error) => {
       setParseResult(null)
-      setParseError(error instanceof Error ? error.message : '解析失败')
+      setParseError(error instanceof Error ? error.message : t('error.parseFailed'))
     },
   })
 
@@ -285,7 +279,7 @@ export function Config() {
     mutationFn: (patch: ConfigPatch) => configApi.applyPatch(patch),
     onSuccess: (next) => applySnapshot(next),
     onError: (error) => {
-      setParseError(error instanceof Error ? error.message : '应用失败')
+      setParseError(error instanceof Error ? error.message : t('error.applyFailed'))
     },
   })
 
@@ -293,7 +287,7 @@ export function Config() {
     mutationFn: (value: string) => configApi.updateGlobalPrompt(value),
     onSuccess: (next) => applySnapshot(next),
     onError: (error) => {
-      setJsonMessage(error instanceof Error ? error.message : '保存失败')
+      setJsonMessage(error instanceof Error ? error.message : t('error.saveFailed'))
     },
   })
 
@@ -322,7 +316,7 @@ export function Config() {
     mutationFn: (value: string) => configApi.updateRewriteGeneralGuidance(value),
     onSuccess: (next) => applySnapshot(next),
     onError: (error) => {
-      setJsonMessage(error instanceof Error ? error.message : '保存失败')
+      setJsonMessage(error instanceof Error ? error.message : t('error.saveFailed'))
     },
   })
 
@@ -356,7 +350,7 @@ export function Config() {
     mutationFn: () => configApi.exportJson(),
     onSuccess: (next) => {
       setJsonText(stringifySnapshot(next))
-      setJsonMessage('已刷新当前配置 JSON')
+      setJsonMessage(t('json.message.refreshed'))
       setJsonPreview(null)
       setJsonPreviewError('')
     },
@@ -367,11 +361,11 @@ export function Config() {
     onSuccess: (preview) => {
       setJsonPreview(preview)
       setJsonPreviewError('')
-      setJsonMessage('已生成导入预览')
+      setJsonMessage(t('json.message.generatePreview'))
     },
     onError: (error) => {
       setJsonPreview(null)
-      setJsonPreviewError(error instanceof Error ? error.message : '导入预览失败')
+      setJsonPreviewError(error instanceof Error ? error.message : t('json.error.previewFailed'))
     },
   })
 
@@ -379,10 +373,10 @@ export function Config() {
     mutationFn: (payload: Record<string, unknown>) => configApi.importJson(payload),
     onSuccess: (next) => {
       applySnapshot(next)
-      setJsonMessage('配置导入成功')
+      setJsonMessage(t('json.message.importSuccess'))
     },
     onError: (error) => {
-      setJsonPreviewError(error instanceof Error ? error.message : '导入失败')
+      setJsonPreviewError(error instanceof Error ? error.message : t('json.error.importFailed'))
     },
   })
 
@@ -483,11 +477,11 @@ export function Config() {
   const handleJsonValidate = () => {
     try {
       JSON.parse(jsonText)
-      setJsonMessage('JSON 语法验证通过')
+      setJsonMessage(t('json.message.validated'))
       setJsonPreviewError('')
     } catch (error) {
       setJsonMessage('')
-      setJsonPreviewError(error instanceof Error ? error.message : 'JSON 格式错误')
+      setJsonPreviewError(error instanceof Error ? error.message : t('error.jsonFormatError'))
     }
   }
 
@@ -497,7 +491,7 @@ export function Config() {
       await previewImportMutation.mutateAsync(payload)
     } catch (error) {
       setJsonPreview(null)
-      setJsonPreviewError(error instanceof Error ? error.message : 'JSON 格式错误')
+      setJsonPreviewError(error instanceof Error ? error.message : t('error.jsonFormatError'))
     }
   }
 
@@ -506,7 +500,7 @@ export function Config() {
       const payload = JSON.parse(jsonText) as Record<string, unknown>
       await importJsonMutation.mutateAsync(payload)
     } catch (error) {
-      setJsonPreviewError(error instanceof Error ? error.message : 'JSON 格式错误')
+      setJsonPreviewError(error instanceof Error ? error.message : t('error.jsonFormatError'))
     }
   }
 
@@ -515,7 +509,7 @@ export function Config() {
     const reader = new FileReader()
     reader.onload = () => {
       setJsonText(String(reader.result ?? ''))
-      setJsonMessage('已载入 JSON 文件')
+      setJsonMessage(t('json.message.fileLoaded'))
       setJsonPreview(null)
       setJsonPreviewError('')
     }
@@ -594,25 +588,33 @@ export function Config() {
   }, [rewriteRuleSnapshotMap])
 
   const aiHelpText = parseResult?.status === 'clarification_needed'
-    ? parseResult.clarification ?? '请补充说明'
-    : parseError || '仅支持全局提示词、场景识别规则、改写规则和改写通用指导。模型参数请在 provider 页面调整。'
+    ? parseResult.clarification ?? t('ai.clarificationFallback')
+    : parseError || t('ai.helpText')
 
-  const renderRuleCount = `${sceneRules.length} 条场景规则 · ${rewriteRules.length} 条改写规则`
+  const renderRuleCount = t('ruleCount', { scene: sceneRules.length, rewrite: rewriteRules.length })
+
   const summarizeSceneRule = (rule: SceneRuleForm) =>
     [
-      rule.scene_type || '未命名规则',
-      rule.triggerConditionsText ? `触发条件：${rule.triggerConditionsText}` : '未配置触发条件',
+      rule.scene_type || t('sceneRules.unnamed'),
+      rule.triggerConditionsText
+        ? t('sceneRules.triggerConditions', { value: rule.triggerConditionsText })
+        : t('sceneRules.noTriggerConditions'),
       `weight=${rule.weight || '1'}`,
     ].join(' · ')
+
+  const summarizeRewriteStrategies = (strategies: RewriteStrategy[]) =>
+    normalizeRewriteStrategies(strategies)
+      .map((strategy) => t(`common:rewriteStrategy.${strategy}`))
+      .join('、')
 
   const summarizeRewriteRule = (rule: RewriteRuleForm) => {
     const strategies = normalizeRewriteStrategies(rule.strategies)
     const primaryStrategy = getPrimaryRewriteStrategy(strategies)
     return [
-      rule.scene_type || '未命名规则',
-      `主策略：${REWRITE_STRATEGY_LABELS[primaryStrategy]}`,
-      `组合：${summarizeRewriteStrategies(strategies)}`,
-      rule.rewrite_guidance.trim() ? '已配置场景指导' : '未配置场景指导',
+      rule.scene_type || t('rewriteRules.unnamed'),
+      t('rewriteRules.primaryStrategy', { value: t(`common:rewriteStrategy.${primaryStrategy}`) }),
+      t('rewriteRules.combination', { value: summarizeRewriteStrategies(strategies) }),
+      rule.rewrite_guidance.trim() ? t('rewriteRules.guidanceSet') : t('rewriteRules.guidanceNotSet'),
       `target_ratio=${rule.target_ratio || '1'}`,
       `priority=${rule.priority || '0'}`,
     ].join(' · ')
@@ -622,22 +624,22 @@ export function Config() {
     <div className="space-y-8">
       <div className="flex items-start justify-between gap-6">
         <div>
-          <h1 className="text-display font-bold text-primary">配置中心</h1>
-          <p className="mt-2 text-callout text-secondary">只维护全局提示词、场景识别规则、改写规则与改写通用指导，模型参数统一放在 provider 配置中。</p>
+          <h1 className="text-display font-bold text-primary">{t('pageTitle')}</h1>
+          <p className="mt-2 text-callout text-secondary">{t('pageDescription')}</p>
         </div>
         <div className="rounded-2xl border border-border bg-subtle px-4 py-3 text-right">
-          <p className="text-caption text-secondary">当前配置</p>
+          <p className="text-caption text-secondary">{t('currentConfig')}</p>
           <p className="text-callout font-medium text-primary">{renderRuleCount}</p>
         </div>
       </div>
 
       <SectionCard
-        title="AI Config Bar"
-        description="输入自然语言后先解析预览，再确认写入同一份配置快照。"
+        title={t('ai.sectionTitle')}
+        description={t('ai.sectionDescription')}
         action={
           <div className="flex items-center gap-2 text-caption text-secondary">
             {isParsingBusy && <Loader2 className="h-4 w-4 animate-spin" />}
-            <span>{isParsingBusy ? '处理中' : '实时解析'}</span>
+            <span>{isParsingBusy ? t('ai.processing') : t('ai.realtime')}</span>
           </div>
         }
       >
@@ -652,25 +654,25 @@ export function Config() {
                 handleParseInstruction()
               }
             }}
-            placeholder="例如：把全局提示词改成更克制的写实风格；新增场景规则：战斗，触发条件是厮杀、交锋"
+            placeholder={t('ai.inputPlaceholder')}
             className="w-full rounded-xl border border-border bg-subtle py-4 pl-12 pr-4 text-body text-primary outline-none transition focus:border-accent focus:bg-white focus:shadow-[0_0_24px_rgba(99,102,241,0.15)]"
           />
         </div>
 
         <div className="flex flex-wrap gap-2">
-          {[
-            '把全局提示词改得更简洁',
-            '新增场景规则：战斗，触发条件是厮杀、交锋',
-            '改写通用指导设置为：保持事实一致，禁止新增世界观设定',
-            '新增改写规则：战斗，strategies=expand,rewrite，target_ratio=2.2',
-          ].map((chip) => (
+          {([
+            'ai.chip.simplifyPrompt',
+            'ai.chip.addSceneRule',
+            'ai.chip.setGeneralGuidance',
+            'ai.chip.addRewriteRule',
+          ] as const).map((key) => (
             <button
-              key={chip}
+              key={key}
               type="button"
-              onClick={() => setAiInput(chip)}
+              onClick={() => setAiInput(t(key))}
               className="rounded-xl border border-border bg-white px-3 py-1.5 text-caption text-secondary transition hover:border-accent hover:text-accent"
             >
-              {chip}
+              {t(key)}
             </button>
           ))}
         </div>
@@ -683,7 +685,7 @@ export function Config() {
             className="button-primary flex items-center gap-2 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {parseMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
-            解析变更
+            {t('ai.parseButton')}
           </button>
           <button
             type="button"
@@ -695,7 +697,7 @@ export function Config() {
             className="button-secondary flex items-center gap-2"
           >
             <X className="h-4 w-4" />
-            清空
+            {t('common:action.clear')}
           </button>
         </div>
 
@@ -707,8 +709,8 @@ export function Config() {
           <div className="space-y-4 rounded-xl border border-border bg-subtle p-4">
             <div className="flex items-center justify-between gap-4">
               <div>
-                <p className="text-callout font-medium text-primary">预览结果</p>
-                <p className="text-caption text-secondary">{parseResult.diff_summary.length} 条建议</p>
+                <p className="text-callout font-medium text-primary">{t('ai.preview.title')}</p>
+                <p className="text-caption text-secondary">{t('ai.preview.suggestions', { count: parseResult.diff_summary.length })}</p>
               </div>
               <button
                 type="button"
@@ -717,7 +719,7 @@ export function Config() {
                 className="button-primary flex items-center gap-2 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {applyPatchMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
-                确认应用
+                {t('ai.preview.applyButton')}
               </button>
             </div>
 
@@ -741,8 +743,8 @@ export function Config() {
 
       <div className="grid gap-6 xl:grid-cols-2">
         <SectionCard
-          title="全局提示词"
-          description="这是一份全局 system prompt，会被 Analyze / Rewrite 共用。"
+          title={t('globalPrompt.sectionTitle')}
+          description={t('globalPrompt.sectionDescription')}
           action={
             <button
               type="button"
@@ -751,7 +753,7 @@ export function Config() {
               className="button-primary flex items-center gap-2 disabled:cursor-not-allowed disabled:opacity-50"
             >
               {updateGlobalPromptMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" style={SAVE_SPINNER_STYLE} /> : <Download className="h-4 w-4" />}
-              保存
+              {t('common:action.save')}
             </button>
           }
         >
@@ -760,13 +762,13 @@ export function Config() {
             onChange={(e) => setGlobalPrompt(e.target.value)}
             rows={12}
             className="w-full rounded-xl border border-border bg-subtle px-4 py-3 font-mono text-caption text-primary outline-none transition focus:border-accent focus:bg-white"
-            placeholder="输入全局提示词..."
+            placeholder={t('globalPrompt.placeholder')}
           />
         </SectionCard>
 
         <SectionCard
-          title="场景识别规则"
-          description="用户手动添加场景类型与触发条件，默认不内置规则。"
+          title={t('sceneRules.sectionTitle')}
+          description={t('sceneRules.sectionDescription')}
           action={
             <button
               type="button"
@@ -774,14 +776,14 @@ export function Config() {
               className="button-secondary flex items-center gap-2"
             >
               <Plus className="h-4 w-4" />
-              新增规则
+              {t('sceneRules.addButton')}
             </button>
           }
         >
           <div className="space-y-4">
             {sceneRules.length === 0 && (
               <div className="rounded-xl border border-dashed border-border bg-subtle px-4 py-8 text-center text-callout text-secondary">
-                还没有场景规则，先添加一条吧。
+                {t('sceneRules.empty')}
               </div>
             )}
 
@@ -791,7 +793,7 @@ export function Config() {
                   <div className="space-y-1">
                     <div className="flex items-center gap-2">
                       <span className="rounded-full bg-white px-2 py-1 text-caption font-medium text-secondary">#{index + 1}</span>
-                      <span className="text-callout font-medium text-primary">{rule.scene_type || '未命名规则'}</span>
+                      <span className="text-callout font-medium text-primary">{rule.scene_type || t('sceneRules.unnamed')}</span>
                       {rule.isNew && (
                         <span className="rounded-full bg-accent/10 px-2 py-1 text-caption font-medium text-accent">new</span>
                       )}
@@ -805,14 +807,14 @@ export function Config() {
                         checked={rule.enabled}
                         onChange={(e) => updateSceneDraft(index, { enabled: e.target.checked })}
                       />
-                      启用
+                      {t('common:action.enable')}
                     </label>
                     <button
                       type="button"
                       onClick={() => toggleSceneRuleCollapsed(rule.uiId)}
                       className="button-secondary flex items-center gap-2"
                     >
-                      {sceneRuleCollapsed[rule.uiId] ? '展开' : '收起'}
+                      {sceneRuleCollapsed[rule.uiId] ? t('common:action.expand') : t('common:action.collapse')}
                     </button>
                   </div>
                 </div>
@@ -821,16 +823,16 @@ export function Config() {
                   <>
                     <div className="grid gap-3 md:grid-cols-2">
                       <label className="space-y-1">
-                        <span className="text-caption text-secondary">scene_type</span>
+                        <span className="text-caption text-secondary">{t('sceneRules.field.sceneType')}</span>
                         <input
                           value={rule.scene_type}
                           onChange={(e) => updateSceneDraft(index, { scene_type: e.target.value })}
                           className="w-full rounded-xl border border-border bg-white px-3 py-2 text-body text-primary outline-none focus:border-accent"
-                          placeholder="例如：战斗"
+                          placeholder={t('sceneRules.placeholder.sceneType')}
                         />
                       </label>
                       <label className="space-y-1">
-                        <span className="text-caption text-secondary">weight</span>
+                        <span className="text-caption text-secondary">{t('sceneRules.field.weight')}</span>
                         <input
                           type="number"
                           step="0.1"
@@ -843,13 +845,13 @@ export function Config() {
                     </div>
 
                     <label className="block space-y-1">
-                      <span className="text-caption text-secondary">触发条件</span>
+                      <span className="text-caption text-secondary">{t('sceneRules.field.triggerConditions')}</span>
                       <textarea
                         value={rule.triggerConditionsText}
                         onChange={(e) => updateSceneDraft(index, { triggerConditionsText: e.target.value })}
                         rows={3}
                         className="w-full rounded-xl border border-border bg-white px-3 py-2 font-mono text-caption text-primary outline-none focus:border-accent"
-                        placeholder="用顿号、逗号或换行分隔"
+                        placeholder={t('sceneRules.placeholder.triggerConditions')}
                       />
                     </label>
                   </>
@@ -863,7 +865,7 @@ export function Config() {
                     className="button-primary flex items-center gap-2 disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     {saveSceneRuleMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" style={SAVE_SPINNER_STYLE} /> : <RefreshCw className="h-4 w-4" />}
-                    保存
+                    {t('common:action.save')}
                   </button>
                   <button
                     type="button"
@@ -871,7 +873,7 @@ export function Config() {
                     className="button-secondary flex items-center gap-2 text-red-500 hover:text-red-600"
                   >
                     <Trash2 className="h-4 w-4" />
-                    删除
+                    {t('common:action.delete')}
                   </button>
                 </div>
               </div>
@@ -881,8 +883,8 @@ export function Config() {
       </div>
 
       <SectionCard
-        title="改写规则"
-        description="和场景识别规则按 scene_type 一一对应；每个场景只能有一条改写规则，策略可多选且默认以拓展为主。"
+        title={t('rewriteRules.sectionTitle')}
+        description={t('rewriteRules.sectionDescription')}
         action={
           <button
             type="button"
@@ -891,14 +893,14 @@ export function Config() {
             className="button-secondary flex items-center gap-2"
           >
             <Plus className="h-4 w-4" />
-            新增规则
+            {t('rewriteRules.addButton')}
           </button>
         }
       >
         <div className="space-y-4">
           <div className="space-y-2 rounded-xl border border-border bg-subtle p-4">
             <div className="flex items-center justify-between gap-4">
-              <p className="text-callout font-medium text-primary">改写通用指导</p>
+              <p className="text-callout font-medium text-primary">{t('rewriteRules.generalGuidance.title')}</p>
               <button
                 type="button"
                 onClick={handleRewriteGuidanceSave}
@@ -906,7 +908,7 @@ export function Config() {
                 className="button-primary flex items-center gap-2 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {updateRewriteGuidanceMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" style={SAVE_SPINNER_STYLE} /> : <RefreshCw className="h-4 w-4" />}
-                保存
+                {t('common:action.save')}
               </button>
             </div>
             <textarea
@@ -914,19 +916,19 @@ export function Config() {
               onChange={(e) => setRewriteGeneralGuidance(e.target.value)}
               rows={4}
               className="w-full rounded-xl border border-border bg-white px-3 py-2 font-mono text-caption text-primary outline-none focus:border-accent"
-              placeholder="例如：保持节奏稳定、避免口语化、保留原人物关系和关键事实。"
+              placeholder={t('rewriteRules.generalGuidance.placeholder')}
             />
           </div>
 
           {availableRewriteSceneTypes.length === 0 && sceneRules.length > 0 && (
             <div className="rounded-xl border border-border bg-white px-3 py-2 text-caption text-secondary">
-              所有场景都已绑定改写规则。
+              {t('rewriteRules.allBound')}
             </div>
           )}
 
           {rewriteRules.length === 0 && (
             <div className="rounded-xl border border-dashed border-border bg-subtle px-4 py-8 text-center text-callout text-secondary">
-              还没有改写规则，先添加一条吧。
+              {t('rewriteRules.empty')}
             </div>
           )}
 
@@ -936,7 +938,7 @@ export function Config() {
                 <div className="space-y-1">
                   <div className="flex items-center gap-2">
                     <span className="rounded-full bg-white px-2 py-1 text-caption font-medium text-secondary">#{index + 1}</span>
-                    <span className="text-callout font-medium text-primary">{rule.scene_type || '未命名规则'}</span>
+                    <span className="text-callout font-medium text-primary">{rule.scene_type || t('rewriteRules.unnamed')}</span>
                     {rule.isNew && (
                       <span className="rounded-full bg-accent/10 px-2 py-1 text-caption font-medium text-accent">new</span>
                     )}
@@ -950,14 +952,14 @@ export function Config() {
                       checked={rule.enabled}
                       onChange={(e) => updateRewriteDraft(index, { enabled: e.target.checked })}
                     />
-                    启用
+                    {t('common:action.enable')}
                   </label>
                   <button
                     type="button"
                     onClick={() => toggleRewriteRuleCollapsed(rule.uiId)}
                     className="button-secondary flex items-center gap-2"
                   >
-                    {rewriteRuleCollapsed[rule.uiId] ? '展开' : '收起'}
+                    {rewriteRuleCollapsed[rule.uiId] ? t('common:action.expand') : t('common:action.collapse')}
                   </button>
                 </div>
               </div>
@@ -966,13 +968,13 @@ export function Config() {
                 <>
                   <div className="grid gap-3 lg:grid-cols-4">
                     <label className="space-y-1 lg:col-span-2">
-                      <span className="text-caption text-secondary">scene_type</span>
+                      <span className="text-caption text-secondary">{t('rewriteRules.field.sceneType')}</span>
                       <select
                         value={rule.scene_type}
                         onChange={(e) => updateRewriteDraft(index, { scene_type: e.target.value })}
                         className="w-full rounded-xl border border-border bg-white px-3 py-2 text-body text-primary outline-none focus:border-accent"
                       >
-                        <option value="">请选择场景</option>
+                        <option value="">{t('rewriteRules.selectScene')}</option>
                         {selectableRewriteSceneTypes(rule.scene_type).map((sceneType) => (
                           <option key={`${sceneType}-${index}`} value={sceneType}>
                             {sceneType}
@@ -981,7 +983,7 @@ export function Config() {
                       </select>
                     </label>
                     <label className="space-y-1">
-                      <span className="text-caption text-secondary">priority</span>
+                      <span className="text-caption text-secondary">{t('rewriteRules.field.priority')}</span>
                       <input
                         type="number"
                         min="0"
@@ -992,7 +994,7 @@ export function Config() {
                       />
                     </label>
                     <label className="space-y-1">
-                      <span className="text-caption text-secondary">target_ratio</span>
+                      <span className="text-caption text-secondary">{t('rewriteRules.field.targetRatio')}</span>
                       <input
                         type="number"
                         min="0.1"
@@ -1003,13 +1005,13 @@ export function Config() {
                       />
                     </label>
                     <label className="block">
-                      <span className="text-caption text-secondary">target_chars（目标新增字数上限）</span>
+                      <span className="text-caption text-secondary">{t('rewriteRules.field.targetChars')}</span>
                       <input
                         type="number"
                         min="1"
                         step="100"
                         value={rule.target_chars ?? 2000}
-                        placeholder="默认 2000"
+                        placeholder={t('rewriteRules.field.targetCharsPlaceholder')}
                         onChange={(e) => updateRewriteDraft(index, { target_chars: e.target.value ? Number(e.target.value) : 2000 })}
                         className="w-full rounded-xl border border-border bg-white px-3 py-2 text-body text-primary outline-none focus:border-accent"
                       />
@@ -1018,9 +1020,9 @@ export function Config() {
 
                   <div className="space-y-2 rounded-xl border border-border bg-white p-3">
                     <div className="flex items-center justify-between gap-4">
-                      <span className="text-caption text-secondary">strategies</span>
+                      <span className="text-caption text-secondary">{t('rewriteRules.field.strategies')}</span>
                       <span className="text-caption text-secondary">
-                        主策略：{REWRITE_STRATEGY_LABELS[getPrimaryRewriteStrategy(rule.strategies)]}
+                        {t('rewriteRules.field.primaryStrategy', { value: t(`common:rewriteStrategy.${getPrimaryRewriteStrategy(rule.strategies)}`) })}
                       </span>
                     </div>
                     <div className="flex flex-wrap gap-2">
@@ -1043,7 +1045,7 @@ export function Config() {
                                 updateRewriteDraft(index, { strategies: nextStrategies })
                               }}
                             />
-                            {REWRITE_STRATEGY_LABELS[strategy]}
+                            {t(`common:rewriteStrategy.${strategy}`)}
                           </label>
                         )
                       })}
@@ -1051,13 +1053,13 @@ export function Config() {
                   </div>
 
                   <label className="block space-y-1">
-                    <span className="text-caption text-secondary">场景改写规则（专属指导）</span>
+                    <span className="text-caption text-secondary">{t('rewriteRules.field.sceneGuidance')}</span>
                     <textarea
                       value={rule.rewrite_guidance}
                       onChange={(e) => updateRewriteDraft(index, { rewrite_guidance: e.target.value })}
                       rows={3}
                       className="w-full rounded-xl border border-border bg-white px-3 py-2 font-mono text-caption text-primary outline-none focus:border-accent"
-                      placeholder="例如：战斗场景增加动作细节与心理张力，但不新增人物设定。"
+                      placeholder={t('rewriteRules.field.sceneGuidancePlaceholder')}
                     />
                   </label>
                 </>
@@ -1071,7 +1073,7 @@ export function Config() {
                   className="button-primary flex items-center gap-2 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   {saveRewriteRuleMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" style={SAVE_SPINNER_STYLE} /> : <RefreshCw className="h-4 w-4" />}
-                  保存
+                  {t('common:action.save')}
                 </button>
                 <button
                   type="button"
@@ -1079,7 +1081,7 @@ export function Config() {
                   className="button-secondary flex items-center gap-2 text-red-500 hover:text-red-600"
                 >
                   <Trash2 className="h-4 w-4" />
-                  删除
+                  {t('common:action.delete')}
                 </button>
               </div>
             </div>
@@ -1088,12 +1090,12 @@ export function Config() {
       </SectionCard>
 
       <SectionCard
-        title="JSON 导入导出"
-        description="三种配置模式共用同一份快照，导入前先预览，确认后再写入。"
+        title={t('json.sectionTitle')}
+        description={t('json.sectionDescription')}
         action={
           <div className="flex items-center gap-2 text-caption text-secondary">
             {isImportBusy && <Loader2 className="h-4 w-4 animate-spin" />}
-            <span>{isImportBusy ? '处理中' : 'JSON 编辑器'}</span>
+            <span>{isImportBusy ? t('json.processing') : t('json.editor')}</span>
           </div>
         }
       >
@@ -1105,7 +1107,7 @@ export function Config() {
             className="button-secondary flex items-center gap-2 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {exportJsonMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
-            导出当前 JSON
+            {t('json.exportButton')}
           </button>
           <button
             type="button"
@@ -1113,7 +1115,7 @@ export function Config() {
             className="button-secondary flex items-center gap-2"
           >
             <FileJson className="h-4 w-4" />
-            语法校验
+            {t('json.validateButton')}
           </button>
           <button
             type="button"
@@ -1122,7 +1124,7 @@ export function Config() {
             className="button-secondary flex items-center gap-2 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {previewImportMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
-            导入预览
+            {t('json.previewButton')}
           </button>
           <button
             type="button"
@@ -1131,7 +1133,7 @@ export function Config() {
             className="button-primary flex items-center gap-2 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {importJsonMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
-            确认导入
+            {t('json.importButton')}
           </button>
           <label className="button-secondary flex cursor-pointer items-center gap-2">
             <input
@@ -1141,7 +1143,7 @@ export function Config() {
               onChange={(e) => handleJsonFile(e.target.files?.[0] ?? null)}
             />
             <Upload className="h-4 w-4" />
-            从文件载入
+            {t('json.loadFromFile')}
           </label>
         </div>
 
@@ -1161,18 +1163,30 @@ export function Config() {
           <div className="space-y-3 rounded-xl border border-border bg-subtle p-4">
             <div className="flex items-center justify-between gap-4">
               <div>
-                <p className="text-callout font-medium text-primary">导入预览</p>
-                <p className="text-caption text-secondary">需要确认后才会覆盖当前配置</p>
+                <p className="text-callout font-medium text-primary">{t('json.preview.title')}</p>
+                <p className="text-caption text-secondary">{t('json.preview.description')}</p>
               </div>
               <span className="rounded-full bg-white px-3 py-1 text-caption text-secondary">preview</span>
             </div>
             <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-              <div className="rounded-xl border border-border bg-white px-3 py-2 text-caption text-primary">全局提示词变更：{jsonPreview.summary.global_prompt_changed ? '是' : '否'}</div>
-              <div className="rounded-xl border border-border bg-white px-3 py-2 text-caption text-primary">场景新增：{jsonPreview.summary.scene_rules_added}</div>
-              <div className="rounded-xl border border-border bg-white px-3 py-2 text-caption text-primary">场景更新：{jsonPreview.summary.scene_rules_updated}</div>
-              <div className="rounded-xl border border-border bg-white px-3 py-2 text-caption text-primary">改写新增：{jsonPreview.summary.rewrite_rules_added}</div>
-              <div className="rounded-xl border border-border bg-white px-3 py-2 text-caption text-primary">改写更新：{jsonPreview.summary.rewrite_rules_updated}</div>
-              <div className="rounded-xl border border-border bg-white px-3 py-2 text-caption text-primary">冲突数：{jsonPreview.summary.conflicts.length}</div>
+              <div className="rounded-xl border border-border bg-white px-3 py-2 text-caption text-primary">
+                {t('json.preview.globalPromptChanged', { value: jsonPreview.summary.global_prompt_changed ? t('json.preview.globalPromptYes') : t('json.preview.globalPromptNo') })}
+              </div>
+              <div className="rounded-xl border border-border bg-white px-3 py-2 text-caption text-primary">
+                {t('json.preview.sceneAdded', { count: jsonPreview.summary.scene_rules_added })}
+              </div>
+              <div className="rounded-xl border border-border bg-white px-3 py-2 text-caption text-primary">
+                {t('json.preview.sceneUpdated', { count: jsonPreview.summary.scene_rules_updated })}
+              </div>
+              <div className="rounded-xl border border-border bg-white px-3 py-2 text-caption text-primary">
+                {t('json.preview.rewriteAdded', { count: jsonPreview.summary.rewrite_rules_added })}
+              </div>
+              <div className="rounded-xl border border-border bg-white px-3 py-2 text-caption text-primary">
+                {t('json.preview.rewriteUpdated', { count: jsonPreview.summary.rewrite_rules_updated })}
+              </div>
+              <div className="rounded-xl border border-border bg-white px-3 py-2 text-caption text-primary">
+                {t('json.preview.conflicts', { count: jsonPreview.summary.conflicts.length })}
+              </div>
             </div>
             {jsonPreview.summary.conflicts.length > 0 && (
               <div className="space-y-2">
@@ -1197,7 +1211,7 @@ export function Config() {
           }}
           rows={20}
           className="w-full rounded-xl border border-border bg-white px-4 py-3 font-mono text-caption text-primary outline-none transition focus:border-accent"
-          placeholder="在这里查看或编辑 JSON 配置..."
+          placeholder={t('json.placeholder')}
         />
       </SectionCard>
     </div>
